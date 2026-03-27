@@ -1,0 +1,1960 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>منصة الإشراف التربوي</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Cairo:wght@300;400;600;700;900&display=swap" rel="stylesheet" />
+  
+  <style>
+    /* ════════════════════════════════════════════
+       DESIGN SYSTEM — ARABIC RTL EdTech Platform
+       Aesthetic: Refined Administrative — Clean & Authoritative
+       Font: Cairo (display) + Tajawal (body)
+    ════════════════════════════════════════════ */
+
+    :root {
+      --green-900: #0D3D26;
+      --green-800: #0F4D30;
+      --green-700: #166534;
+      --green-600: #16A34A;
+      --green-500: #22C55E;
+      --green-100: #DCFCE7;
+      --green-50:  #F0FDF4;
+
+      --blue-700:  #1D4ED8;
+      --blue-600:  #2563EB;
+      --blue-100:  #DBEAFE;
+      --blue-50:   #EFF6FF;
+
+      --amber-600: #D97706;
+      --amber-100: #FEF3C7;
+      --amber-50:  #FFFBEB;
+
+      --red-600:   #DC2626;
+      --red-100:   #FEE2E2;
+      --red-50:    #FFF5F5;
+
+      --purple-600: #7C3AED;
+      --purple-100: #EDE9FE;
+
+      --gray-900: #0F172A;
+      --gray-800: #1E293B;
+      --gray-700: #334155;
+      --gray-600: #475569;
+      --gray-500: #64748B;
+      --gray-400: #94A3B8;
+      --gray-300: #CBD5E1;
+      --gray-200: #E2E8F0;
+      --gray-100: #F1F5F9;
+      --gray-50:  #F8FAFC;
+
+      --white: #FFFFFF;
+      --sidebar-w: 260px;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.06);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.08);
+
+      --font-display: 'Cairo', 'Tajawal', sans-serif;
+      --font-body: 'Tajawal', 'Cairo', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 15px; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--gray-50);
+      color: var(--gray-900);
+      direction: rtl;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── SCREENS ────────────────────────────── */
+    .screen { display: none; min-height: 100vh; }
+    .screen.active { display: flex; }
+
+    /* ════════════════════════════════════════════
+       LOGIN
+    ════════════════════════════════════════════ */
+    #screen-login {
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, #0D3D26 0%, #0F4D30 40%, #1a1a2e 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .login-bg { position: absolute; inset: 0; pointer-events: none; }
+
+    .login-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.25;
+      animation: orb-float 8s ease-in-out infinite;
+    }
+    .orb1 { width: 500px; height: 500px; background: #1E6B4A; top: -100px; right: -100px; animation-delay: 0s; }
+    .orb2 { width: 400px; height: 400px; background: #22C55E; bottom: -80px; left: -80px; animation-delay: -3s; }
+    .orb3 { width: 300px; height: 300px; background: #166534; top: 40%; left: 20%; animation-delay: -5s; }
+
+    .login-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    @keyframes orb-float {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-30px) scale(1.05); }
+    }
+
+    .login-card {
+      position: relative;
+      z-index: 10;
+      background: rgba(255,255,255,0.97);
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.1);
+      animation: card-in .5s cubic-bezier(.16,1,.3,1) both;
+    }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(24px) scale(.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .brand-icon svg { width: 52px; height: 52px; }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 900;
+      color: var(--gray-900);
+      line-height: 1.2;
+    }
+    .brand-sub { font-size: .78rem; color: var(--gray-500); margin-top: 2px; }
+
+    .login-role-tabs {
+      display: flex;
+      gap: 8px;
+      background: var(--gray-100);
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 24px;
+    }
+    .role-tab {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      font-family: var(--font-body);
+      font-size: .875rem;
+      font-weight: 600;
+      color: var(--gray-500);
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .role-tab.active {
+      background: var(--white);
+      color: var(--green-700);
+      box-shadow: var(--shadow-sm);
+    }
+    .role-tab-icon { font-size: 1rem; }
+
+    .login-form { display: flex; flex-direction: column; gap: 16px; }
+
+    .form-label {
+      display: block;
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--gray-700);
+      margin-bottom: 6px;
+      letter-spacing: .01em;
+    }
+
+    .form-input, .form-textarea, .search-input, select.form-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: .9rem;
+      color: var(--gray-900);
+      background: var(--white);
+      transition: border-color .2s, box-shadow .2s;
+      direction: rtl;
+    }
+    .form-input:focus, .form-textarea:focus, .search-input:focus {
+      outline: none;
+      border-color: var(--green-600);
+      box-shadow: 0 0 0 3px rgba(22,163,74,.12);
+    }
+
+    .btn-login {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 13px;
+      background: linear-gradient(135deg, var(--green-700), var(--green-900));
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-body);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .2s;
+      margin-top: 4px;
+    }
+    .btn-login:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(13,61,38,.35); }
+
+    .demo-hint {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 16px;
+      padding: 10px 12px;
+      background: var(--amber-50);
+      border: 1px solid var(--amber-100);
+      border-radius: var(--radius-sm);
+      font-size: .78rem;
+      color: var(--amber-600);
+    }
+
+    /* ════════════════════════════════════════════
+       LAYOUT: SIDEBAR + MAIN
+    ════════════════════════════════════════════ */
+    #screen-inspector, #screen-teacher {
+      flex-direction: row;
+    }
+
+    .sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: linear-gradient(180deg, var(--green-900) 0%, #0a2d1c 100%);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 100;
+      box-shadow: -4px 0 24px rgba(0,0,0,.15);
+    }
+
+    .main-content {
+      flex: 1;
+      margin-right: var(--sidebar-w);
+      padding: 32px;
+      min-height: 100vh;
+      background: var(--gray-50);
+      overflow-y: auto;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 24px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar-logo svg { width: 36px; height: 36px; flex-shrink: 0; }
+    .sidebar-title { font-family: var(--font-display); font-size: .9rem; font-weight: 800; color: white; }
+    .sidebar-role { font-size: .72rem; color: rgba(255,255,255,.5); margin-top: 1px; }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 14px;
+      border-radius: 10px;
+      text-decoration: none;
+      color: rgba(255,255,255,.6);
+      font-size: .875rem;
+      font-weight: 500;
+      transition: all .2s;
+      position: relative;
+      cursor: pointer;
+    }
+    .nav-item:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.9); }
+    .nav-item.active {
+      background: rgba(255,255,255,.12);
+      color: white;
+      font-weight: 700;
+    }
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 60%;
+      background: var(--green-500);
+      border-radius: 2px 0 0 2px;
+    }
+
+    .nav-badge {
+      margin-right: auto;
+      background: var(--amber-600);
+      color: white;
+      font-size: .7rem;
+      font-weight: 800;
+      padding: 1px 7px;
+      border-radius: 20px;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-avatar {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--green-600), var(--green-800));
+      color: white;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: .9rem;
+      flex-shrink: 0;
+    }
+    .user-avatar.teal { background: linear-gradient(135deg, #0891B2, #0E7490); }
+
+    .user-info { flex: 1; min-width: 0; }
+    .user-name { font-size: .8rem; font-weight: 700; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-role-tag { font-size: .7rem; color: rgba(255,255,255,.5); }
+
+    .logout-btn {
+      background: rgba(255,255,255,.08);
+      border: none;
+      color: rgba(255,255,255,.5);
+      padding: 7px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,.15); color: white; }
+
+    /* ════════════════════════════════════════════
+       TAB PANELS & PAGE HEADERS
+    ════════════════════════════════════════════ */
+    .tab-panel { display: none; animation: fade-up .35s ease both; }
+    .tab-panel.active { display: block; }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .page-title {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: var(--gray-900);
+      line-height: 1.2;
+    }
+    .page-subtitle { color: var(--gray-500); font-size: .875rem; margin-top: 4px; }
+
+    .date-badge {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: .8rem;
+      color: var(--gray-600);
+      box-shadow: var(--shadow-sm);
+      white-space: nowrap;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+
+    /* ════════════════════════════════════════════
+       STAT CARDS & CHARTS
+    ════════════════════════════════════════════ */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+      transition: transform .2s, box-shadow .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0; left: 0;
+      height: 3px;
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+    .stat-green::after { background: linear-gradient(90deg, var(--green-600), var(--green-500)); }
+    .stat-blue::after  { background: linear-gradient(90deg, var(--blue-600), #60A5FA); }
+    .stat-amber::after { background: linear-gradient(90deg, var(--amber-600), #FCD34D); }
+    .stat-purple::after{ background: linear-gradient(90deg, var(--purple-600), #A78BFA); }
+
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+    .stat-icon-wrap {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .stat-green .stat-icon-wrap { background: var(--green-100); color: var(--green-700); }
+    .stat-blue  .stat-icon-wrap { background: var(--blue-100);  color: var(--blue-700); }
+    .stat-amber .stat-icon-wrap { background: var(--amber-100); color: var(--amber-600); }
+    .stat-purple .stat-icon-wrap { background: var(--purple-100); color: var(--purple-600); }
+
+    .stat-num {
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      font-weight: 900;
+      color: var(--gray-900);
+      line-height: 1;
+    }
+    .stat-label { font-size: .8rem; color: var(--gray-500); font-weight: 500; }
+    .stat-data { display: flex; flex-direction: column; gap: 3px; }
+
+    .stat-trend {
+      font-size: .75rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+      align-self: flex-start;
+    }
+    .stat-trend.up   { background: var(--green-100); color: var(--green-700); }
+    .stat-trend.warn { background: var(--amber-100); color: var(--amber-600); }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .chart-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--gray-900);
+    }
+    .card-badge {
+      font-size: .72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--gray-100);
+      color: var(--gray-600);
+    }
+
+    .btn-text {
+      background: none;
+      border: none;
+      color: var(--green-600);
+      font-family: var(--font-body);
+      font-size: .82rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    /* Progress Bars */
+    .report-progress-list { display: flex; flex-direction: column; gap: 16px; }
+    .progress-item { display: flex; align-items: center; gap: 12px; }
+    .progress-label {
+      display: flex; align-items: center; gap: 8px;
+      width: 180px; font-size: .85rem; color: var(--gray-700); flex-shrink: 0;
+    }
+    .progress-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .progress-dot.green { background: var(--green-600); }
+    .progress-dot.blue  { background: var(--blue-600); }
+    .progress-dot.red   { background: var(--red-600); }
+
+    .progress-bar-wrap {
+      flex: 1; height: 8px; background: var(--gray-100); border-radius: 20px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; width: var(--val); background: var(--color); border-radius: 20px;
+      animation: bar-in .8s cubic-bezier(.16,1,.3,1) both;
+    }
+    @keyframes bar-in { from { width: 0; } to { width: var(--val); } }
+
+    .progress-pct { font-size: .8rem; font-weight: 800; color: var(--gray-700); width: 36px; text-align: left; direction: ltr; }
+
+    /* Donut Chart */
+    .donut-container { display: flex; align-items: center; gap: 16px; }
+    .donut-svg { width: 120px; height: 120px; transform: rotate(-90deg); flex-shrink: 0; }
+    .donut-seg { transition: stroke-dasharray .6s ease; }
+    .donut-num { font-family: var(--font-display); font-size: 22px; font-weight: 900; fill: var(--gray-900); transform: rotate(90deg) translateX(10px); transform-origin: 60px 60px; }
+    .donut-label-txt { font-size: 9px; fill: var(--gray-500); transform: rotate(90deg) translateX(10px); transform-origin: 60px 60px; }
+
+    .donut-legend { display: flex; flex-direction: column; gap: 9px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: .78rem; color: var(--gray-600); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-item strong { margin-right: auto; font-weight: 800; color: var(--gray-900); padding-right: 8px; }
+
+    /* ════════════════════════════════════════════
+       ACTIVITY & TICKETS TABLE
+    ════════════════════════════════════════════ */
+    .activity-card { background: var(--white); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); }
+    .activity-list { display: flex; flex-direction: column; }
+    .activity-row { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--gray-100); }
+    .activity-row:last-child { border-bottom: none; }
+    .activity-avatar { width: 40px; height: 40px; background: linear-gradient(135deg, var(--green-600), var(--green-800)); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 900; font-size: .9rem; flex-shrink: 0; }
+    .activity-body { flex: 1; }
+    .activity-name { font-size: .875rem; font-weight: 700; color: var(--gray-900); }
+    .activity-school { font-weight: 400; color: var(--gray-500); }
+    .activity-desc { font-size: .8rem; color: var(--gray-600); margin-top: 2px; }
+    .activity-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .activity-time { font-size: .72rem; color: var(--gray-400); }
+
+    .ticket-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+    .badge-visit    { background: var(--green-100); color: var(--green-700); }
+    .badge-accomp   { background: var(--blue-100); color: var(--blue-700); }
+    .badge-admin    { background: var(--amber-100); color: var(--amber-600); }
+    .badge-complaint{ background: var(--red-100); color: var(--red-600); }
+    .badge-report   { background: var(--purple-100); color: var(--purple-600); }
+
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+    .status-pending    { background: var(--amber-100); color: var(--amber-600); }
+    .status-inprogress { background: var(--blue-100);  color: var(--blue-700); }
+    .status-closed     { background: var(--gray-100);  color: var(--gray-600); }
+
+    .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+    .filter-btn { padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--gray-200); background: var(--white); font-family: var(--font-body); font-size: .8rem; font-weight: 600; color: var(--gray-600); cursor: pointer; transition: all .2s; }
+    .filter-btn.active, .filter-btn:hover { background: var(--green-700); border-color: var(--green-700); color: white; }
+
+    .tickets-table-wrap { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); overflow: hidden; }
+    .tickets-table { width: 100%; border-collapse: collapse; }
+    .tickets-table thead tr { background: var(--gray-50); border-bottom: 1px solid var(--gray-200); }
+    .tickets-table th { padding: 13px 18px; font-size: .8rem; font-weight: 800; color: var(--gray-600); text-align: right; white-space: nowrap; }
+    .tickets-table td { padding: 14px 18px; font-size: .875rem; color: var(--gray-700); border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+    .tickets-table tbody tr:last-child td { border-bottom: none; }
+    .tickets-table tbody tr:hover { background: var(--gray-50); }
+
+    .table-user { display: flex; align-items: center; gap: 10px; }
+    .table-avatar { width: 34px; height: 34px; background: linear-gradient(135deg, var(--green-600), var(--green-800)); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: .8rem; flex-shrink: 0; }
+
+    .btn-action { padding: 6px 14px; background: var(--green-700); color: white; border: none; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: .78rem; font-weight: 700; cursor: pointer; transition: all .2s; }
+    .btn-action:hover { background: var(--green-900); }
+    .btn-action.btn-view { background: var(--gray-200); color: var(--gray-700); }
+    .btn-action.btn-view:hover { background: var(--gray-300); }
+
+    /* ════════════════════════════════════════════
+       REPORTS & TEACHERS GRID
+    ════════════════════════════════════════════ */
+    .reports-summary-row { display: flex; gap: 16px; margin-bottom: 24px; }
+    .rsummary-card { flex: 1; border-radius: var(--radius); padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; }
+    .rsummary-card.green { background: var(--green-700); color: white; }
+    .rsummary-card.blue  { background: var(--blue-600); color: white; }
+    .rsummary-card.red   { background: var(--red-600); color: white; }
+    .rsummary-num  { font-family: var(--font-display); font-size: 2rem; font-weight: 900; }
+    .rsummary-label{ font-size: .85rem; opacity: .85; }
+
+    .reports-grid { display: flex; flex-direction: column; gap: 12px; }
+    .report-row-card { background: var(--white); border-radius: var(--radius); padding: 18px 22px; display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); border-right: 4px solid transparent; transition: all .2s; }
+    .report-row-card:hover { transform: translateX(-2px); box-shadow: var(--shadow-md); }
+    .report-row-card.submitted { border-right-color: var(--green-600); }
+    .report-row-card.review    { border-right-color: var(--blue-600); }
+    .report-row-card.late      { border-right-color: var(--red-600); }
+
+    .rcard-avatar { width: 42px; height: 42px; background: linear-gradient(135deg, var(--green-600), var(--green-800)); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 900; flex-shrink: 0; }
+    .rcard-body { flex: 1; }
+    .rcard-name { font-weight: 700; color: var(--gray-900); font-size: .9rem; }
+    .rcard-school { font-size: .78rem; color: var(--gray-500); margin-top: 2px; }
+    .rcard-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .rcard-date  { font-size: .75rem; color: var(--gray-400); }
+    .rcard-status { font-size: .78rem; font-weight: 700; white-space: nowrap; }
+    .rcard-status.green  { color: var(--green-700); }
+    .rcard-status.blue   { color: var(--blue-600); }
+    .rcard-status.red    { color: var(--red-600); }
+    .rcard-status.amber  { color: var(--amber-600); }
+    .rcard-btn { padding: 7px 16px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: .8rem; font-weight: 700; color: var(--gray-700); cursor: pointer; transition: all .2s; white-space: nowrap; }
+    .rcard-btn:hover { background: var(--gray-200); }
+    .rcard-btn.btn-warn { background: var(--amber-100); color: var(--amber-600); border-color: transparent; }
+    .rcard-btn.btn-warn:hover { background: var(--amber-600); color: white; }
+
+    .search-wrap { display: flex; align-items: center; gap: 8px; background: var(--white); border: 1.5px solid var(--gray-200); border-radius: 10px; padding: 9px 14px; box-shadow: var(--shadow-sm); }
+    .search-input { border: none; outline: none; font-family: var(--font-body); font-size: .875rem; color: var(--gray-900); background: transparent; width: 200px; direction: rtl; }
+
+    .teachers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .teacher-card { background: var(--white); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); display: flex; flex-direction: column; gap: 12px; transition: transform .2s, box-shadow .2s; cursor: default; }
+    .teacher-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+    .tc-top { display: flex; align-items: center; gap: 12px; }
+    .tc-avatar { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 900; font-size: 1.1rem; color: white; flex-shrink: 0; }
+    .tc-name { font-weight: 800; font-size: .9rem; color: var(--gray-900); }
+    .tc-school { font-size: .75rem; color: var(--gray-500); margin-top: 2px; }
+    .tc-grade { font-size: .75rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: var(--green-50); color: var(--green-700); border: 1px solid var(--green-100); align-self: flex-start; }
+    .tc-report-status { display: flex; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--gray-100); font-size: .75rem; color: var(--gray-500); }
+
+    /* ════════════════════════════════════════════
+       TEACHER DASHBOARD SPECIFICS
+    ════════════════════════════════════════════ */
+    .teacher-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .tsummary-card { background: var(--white); border-radius: var(--radius); padding: 20px; display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); transition: transform .2s; }
+    .tsummary-card:hover { transform: translateY(-2px); }
+    .tsummary-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .tsummary-num { font-family: var(--font-display); font-size: 1.8rem; font-weight: 900; color: var(--gray-900); }
+    .tsummary-label { font-size: .78rem; color: var(--gray-500); }
+
+    .my-requests-section { background: var(--white); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); }
+    .my-requests-list { display: flex; flex-direction: column; gap: 0; }
+    .mreq-item { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--gray-100); flex-wrap: wrap; }
+    .mreq-item:last-child { border-bottom: none; }
+    .mreq-desc { flex: 1; font-size: .875rem; color: var(--gray-700); min-width: 200px; }
+    .mreq-date { font-size: .78rem; color: var(--gray-400); white-space: nowrap; }
+
+    .form-card { background: var(--white); border-radius: var(--radius); padding: 32px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); }
+    .form-section-title { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+    .form-section-num { width: 42px; height: 42px; background: var(--green-700); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 1rem; font-weight: 900; flex-shrink: 0; }
+    .fst-label { font-family: var(--font-display); font-size: 1rem; font-weight: 800; color: var(--gray-900); }
+    .fst-sub { font-size: .8rem; color: var(--gray-500); margin-top: 2px; }
+
+    .request-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px; }
+    .rtype-card { border: 2px solid var(--gray-200); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: all .2s; text-align: center; }
+    .rtype-card:hover { border-color: var(--green-600); background: var(--green-50); }
+    .rtype-card.active { border-color: var(--green-600); background: var(--green-50); box-shadow: 0 0 0 3px rgba(22,163,74,.12); }
+    .rtype-icon { font-size: 1.8rem; margin-bottom: 8px; }
+    .rtype-label { font-size: .82rem; font-weight: 800; color: var(--gray-900); }
+    .rtype-desc  { font-size: .72rem; color: var(--gray-500); margin-top: 4px; line-height: 1.4; }
+    .form-divider { height: 1px; background: var(--gray-100); margin: 24px 0; }
+
+    .request-form { display: flex; flex-direction: column; gap: 16px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .required { color: var(--red-600); }
+    .form-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 8px; }
+
+    .btn-reset { padding: 11px 22px; background: var(--white); border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: .9rem; font-weight: 700; color: var(--gray-600); cursor: pointer; transition: all .2s; }
+    .btn-reset:hover { border-color: var(--gray-400); }
+    .btn-submit { display: flex; align-items: center; gap: 8px; padding: 11px 26px; background: linear-gradient(135deg, var(--green-700), var(--green-900)); color: white; border: none; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: .9rem; font-weight: 800; cursor: pointer; transition: all .2s; }
+    .btn-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(13,61,38,.3); }
+    .btn-primary { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: linear-gradient(135deg, var(--green-700), var(--green-900)); color: white; border: none; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: .875rem; font-weight: 700; cursor: pointer; transition: all .2s; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(13,61,38,.25); }
+
+    .teacher-reports-list { display: flex; flex-direction: column; gap: 14px; }
+    .treport-card { background: var(--white); border-radius: var(--radius); padding: 20px 24px; display: flex; align-items: center; gap: 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); border-right: 4px solid transparent; }
+    .treport-card.approved { border-right-color: var(--green-600); }
+    .treport-card.review   { border-right-color: var(--blue-600); }
+    .treport-card.pending  { border-right-color: var(--amber-600); }
+    .treport-icon { font-size: 2rem; flex-shrink: 0; }
+    .treport-body { flex: 1; }
+    .treport-title { font-weight: 800; color: var(--gray-900); font-size: .9rem; }
+    .treport-sub   { font-size: .78rem; color: var(--gray-500); margin-top: 2px; }
+    .treport-meta  { font-size: .75rem; color: var(--gray-400); margin-top: 4px; }
+    .treport-status { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .treport-note { font-size: .72rem; color: var(--gray-400); max-width: 200px; text-align: left; }
+
+    /* PROFILE */
+    .profile-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-200); overflow: hidden; }
+    .profile-header { display: flex; align-items: center; gap: 20px; padding: 28px 32px; background: linear-gradient(135deg, var(--green-900), #0a2d1c); color: white; }
+    .profile-avatar-large { width: 72px; height: 72px; background: rgba(255,255,255,.15); border: 3px solid rgba(255,255,255,.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 2rem; font-weight: 900; flex-shrink: 0; }
+    .profile-name { font-family: var(--font-display); font-size: 1.4rem; font-weight: 900; }
+    .profile-title { font-size: .85rem; opacity: .75; margin-top: 4px; }
+    .profile-badge { display: inline-block; background: var(--green-500); color: white; font-size: .7rem; font-weight: 800; padding: 3px 10px; border-radius: 20px; margin-top: 8px; }
+    .profile-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+    .pdetail-item { padding: 20px 24px; border-bottom: 1px solid var(--gray-100); border-left: 1px solid var(--gray-100); }
+    .pdetail-item:nth-child(4n+1) { border-right: none; }
+    .pdetail-label { font-size: .72rem; font-weight: 800; color: var(--gray-400); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+    .pdetail-val   { font-size: .9rem; font-weight: 600; color: var(--gray-900); }
+
+    /* ════════════════════════════════════════════
+       MODALS
+    ════════════════════════════════════════════ */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal-box { background: var(--white); border-radius: 16px; width: 100%; max-width: 520px; box-shadow: var(--shadow-lg); animation: modal-in .3s cubic-bezier(.16,1,.3,1) both; overflow: hidden; }
+    @keyframes modal-in { from { opacity: 0; transform: scale(.94) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--gray-100); }
+    .modal-header h3 { font-family: var(--font-display); font-size: 1.1rem; font-weight: 900; }
+    .modal-close { background: var(--gray-100); border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: .9rem; color: var(--gray-600); display: flex; align-items: center; justify-content: center; }
+    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--gray-100); background: var(--gray-50); }
+
+    .modal-ticket-info { background: var(--gray-50); border-radius: var(--radius-sm); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .mti-row { display: flex; gap: 10px; font-size: .875rem; }
+    .mti-key { font-weight: 800; color: var(--gray-700); white-space: nowrap; min-width: 90px; }
+    .mti-val { color: var(--gray-600); }
+
+    .modal-response-section { display: flex; flex-direction: column; gap: 6px; }
+
+    .btn-success { padding: 9px 20px; background: var(--green-700); color: white; border: none; border-radius: var(--radius-sm); font-family: var(--font-body); font-weight: 700; font-size: .875rem; cursor: pointer; transition: all .2s; }
+    .btn-success:hover { background: var(--green-900); }
+    .btn-danger { padding: 9px 20px; background: var(--red-50); color: var(--red-600); border: 1.5px solid var(--red-100); border-radius: var(--radius-sm); font-family: var(--font-body); font-weight: 700; font-size: .875rem; cursor: pointer; transition: all .2s; }
+    .btn-danger:hover { background: var(--red-600); color: white; }
+    .btn-outline { padding: 9px 20px; background: transparent; color: var(--gray-600); border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); font-family: var(--font-body); font-weight: 700; font-size: .875rem; cursor: pointer; transition: all .2s; }
+    .btn-print { display: flex; align-items: center; gap: 5px; padding: 9px 20px; background: var(--blue-600); color: white; border: none; border-radius: var(--radius-sm); font-family: var(--font-body); font-weight: 700; font-size: .875rem; cursor: pointer; transition: all .2s; }
+    .btn-print:hover { background: var(--blue-700); }
+
+    .upload-zone { border: 2px dashed var(--gray-300); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: all .2s; }
+    .upload-zone:hover { border-color: var(--green-600); background: var(--green-50); }
+    .upload-icon { font-size: 2.5rem; margin-bottom: 8px; }
+    .upload-text { font-size: .875rem; font-weight: 700; color: var(--gray-700); }
+    .upload-hint { font-size: .75rem; color: var(--gray-400); margin-top: 4px; }
+
+    /* TOAST */
+    .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--gray-900); color: white; padding: 12px 24px; border-radius: 30px; font-size: .875rem; font-weight: 600; z-index: 9999; transition: transform .35s cubic-bezier(.16,1,.3,1); pointer-events: none; white-space: nowrap; box-shadow: var(--shadow-lg); }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* RESPONSIVE */
+    @media (max-width: 1100px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .charts-row { grid-template-columns: 1fr; }
+      .request-type-grid { grid-template-columns: repeat(2, 1fr); }
+      .profile-details-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 900px) {
+      :root { --sidebar-w: 220px; }
+      .main-content { padding: 24px; }
+      .teacher-summary-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 700px) {
+      .sidebar { display: none; }
+      .main-content { margin-right: 0; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .form-row { grid-template-columns: 1fr; }
+      .page-header { flex-direction: column; }
+    }
+
+    /* ════════════════════════════════════════════
+       PRINT CSS (إعدادات الطباعة الرسمية بدون هوامش)
+    ════════════════════════════════════════════ */
+    @media print {
+      @page { size: A4; margin: 0; }
+      html, body { margin: 0; padding: 0; background: white !important; }
+      
+      body * { visibility: hidden; }
+      #print-area, #print-area * { visibility: visible; }
+      
+      #print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 40px;
+        box-sizing: border-box;
+      }
+
+      .print-header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 10px; display: block !important; }
+      .print-title { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+      .print-subtitle { font-size: 16px; }
+      .print-row { margin-bottom: 15px; font-size: 16px; display: flex; gap: 10px; }
+      .print-label { font-weight: bold; width: 150px; display: inline-block; }
+      .print-value { display: inline-block; flex: 1; }
+      .print-footer { margin-top: 50px; display: flex !important; justify-content: space-between; }
+      .print-sign { width: 200px; text-align: center; border-top: 1px dashed #000; padding-top: 10px; }
+      
+      .modal-header, .modal-footer, .modal-response-section, .modal-close { display: none !important; }
+      .modal-box { box-shadow: none !important; border: none !important; width: 100% !important; max-width: none !important; animation: none !important; transform: none !important; }
+      .mti-row { display: flex; font-size: 16px; margin-bottom: 10px; }
+      .modal-ticket-info { background: transparent !important; padding: 0 !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     LOGIN SCREEN
+════════════════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-bg">
+    <div class="login-orb orb1"></div>
+    <div class="login-orb orb2"></div>
+    <div class="login-orb orb3"></div>
+    <div class="login-grid"></div>
+  </div>
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M24 4L44 14V26C44 35.94 35.2 45.24 24 48C12.8 45.24 4 35.94 4 26V14L24 4Z" fill="url(#brandGrad)"/>
+          <path d="M16 24H32M24 16V32" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M18 20L24 16L30 20" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <defs>
+            <linearGradient id="brandGrad" x1="4" y1="4" x2="44" y2="48" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#1E6B4A"/>
+              <stop offset="1" stop-color="#0D4F35"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">منصة الإشراف التربوي</h1>
+        <p class="brand-sub">التعليم الابتدائي — نظام متابعة المفتشين والأساتذة</p>
+      </div>
+    </div>
+
+    <div class="login-role-tabs">
+      <button class="role-tab active" data-role="inspector" onclick="setRole('inspector', this)">
+        <span class="role-tab-icon">🏛️</span>
+        <span>مفتش تربوي</span>
+      </button>
+      <button class="role-tab" data-role="teacher" onclick="setRole('teacher', this)">
+        <span class="role-tab-icon">👨‍🏫</span>
+        <span>أستاذ</span>
+      </button>
+    </div>
+
+    <form class="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label">البريد الإلكتروني</label>
+        <input class="form-input" type="email" id="login-email" placeholder="example@education.dz" value="inspector@edu.dz" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">كلمة المرور</label>
+        <input class="form-input" type="password" id="login-password" placeholder="••••••••" value="password" required />
+      </div>
+      <button type="submit" class="btn-login">
+        <span>تسجيل الدخول</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+      </button>
+    </form>
+
+    <div class="demo-hint">
+      <span>🔑</span>
+      <span>للتجربة: inspector@edu.dz أو teacher@edu.dz</span>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     INSPECTOR DASHBOARD
+════════════════════════════════════════════ -->
+<div id="screen-inspector" class="screen">
+  <aside class="sidebar" id="inspector-sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">
+        <svg viewBox="0 0 32 32" fill="none"><path d="M16 2L30 9V18C30 25.18 23.73 31.84 16 34C8.27 31.84 2 25.18 2 18V9L16 2Z" fill="url(#sideGrad)"/><path d="M10 16H22M16 10V22" stroke="white" stroke-width="2" stroke-linecap="round"/><defs><linearGradient id="sideGrad" x1="2" y1="2" x2="30" y2="34" gradientUnits="userSpaceOnUse"><stop stop-color="#1E6B4A"/><stop offset="1" stop-color="#0D3D26"/></linearGradient></defs></svg>
+      </div>
+      <div>
+        <div class="sidebar-title">الإشراف التربوي</div>
+        <div class="sidebar-role">لوحة المفتش</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" onclick="inspectorTab('overview', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span>نظرة عامة</span>
+      </a>
+      <a href="#" class="nav-item" onclick="inspectorTab('tickets', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>الطلبات</span>
+        <span class="nav-badge">4</span>
+      </a>
+      <a href="#" class="nav-item" onclick="inspectorTab('reports', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        <span>التقارير</span>
+      </a>
+      <a href="#" class="nav-item" onclick="inspectorTab('teachers', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        <span>الأساتذة</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-avatar">م</div>
+      <div class="user-info">
+        <div class="user-name">أ. محمد الطاهر</div>
+        <div class="user-role-tag">مفتش تربوي</div>
+      </div>
+      <button class="logout-btn" onclick="logout()" title="تسجيل الخروج">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main-content" id="inspector-main">
+    <!-- TAB: OVERVIEW -->
+    <div id="tab-overview" class="tab-panel active">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">لوحة المتابعة الإجمالية</h2>
+          <p class="page-subtitle">الفصل الدراسي الثاني — 2025/2026</p>
+        </div>
+        <div class="header-actions">
+          <span class="date-badge" id="current-date-1">📅 اليوم</span>
+        </div>
+      </div>
+
+      <!-- STAT CARDS -->
+      <div class="stats-grid">
+        <div class="stat-card stat-green">
+          <div class="stat-icon-wrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <div class="stat-data">
+            <div class="stat-num" data-target="47">0</div>
+            <div class="stat-label">إجمالي الأساتذة</div>
+          </div>
+          <div class="stat-trend up">↑ 3 هذا الفصل</div>
+        </div>
+        <div class="stat-card stat-blue">
+          <div class="stat-icon-wrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+          </div>
+          <div class="stat-data">
+            <div class="stat-num" data-target="34">0</div>
+            <div class="stat-label">تقارير مُسلَّمة</div>
+          </div>
+          <div class="stat-trend up">72% من الإجمالي</div>
+        </div>
+        <div class="stat-card stat-amber">
+          <div class="stat-icon-wrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+          </div>
+          <div class="stat-data">
+            <div class="stat-num" data-target="4">0</div>
+            <div class="stat-label">طلبات معلقة</div>
+          </div>
+          <div class="stat-trend warn">⚠ تتطلب معالجة</div>
+        </div>
+        <div class="stat-card stat-purple">
+          <div class="stat-icon-wrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="stat-data">
+            <div class="stat-num" data-target="6">0</div>
+            <div class="stat-label">زيارات مجدولة</div>
+          </div>
+          <div class="stat-trend up">الشهر الجاري</div>
+        </div>
+      </div>
+
+      <!-- CHARTS ROW -->
+      <div class="charts-row">
+        <div class="chart-card wide">
+          <div class="card-header">
+            <h3 class="card-title">حالة التقارير الدورية</h3>
+            <span class="card-badge">الفصل الثاني</span>
+          </div>
+          <div class="report-progress-list">
+            <div class="progress-item">
+              <div class="progress-label">
+                <span class="progress-dot green"></span>
+                <span>تقارير مُسلَّمة ومعتمدة</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar" style="--val: 72%; --color: #1E6B4A;"></div>
+              </div>
+              <span class="progress-pct">72%</span>
+            </div>
+            <div class="progress-item">
+              <div class="progress-label">
+                <span class="progress-dot blue"></span>
+                <span>قيد المراجعة</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar" style="--val: 13%; --color: #2563EB;"></div>
+              </div>
+              <span class="progress-pct">13%</span>
+            </div>
+            <div class="progress-item">
+              <div class="progress-label">
+                <span class="progress-dot red"></span>
+                <span>متأخرون</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar" style="--val: 15%; --color: #DC2626;"></div>
+              </div>
+              <span class="progress-pct">15%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="card-header">
+            <h3 class="card-title">توزيع الطلبات</h3>
+          </div>
+          <div class="donut-container">
+            <svg class="donut-svg" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="45" fill="none" stroke="#f1f5f9" stroke-width="18"/>
+              <circle cx="60" cy="60" r="45" fill="none" stroke="#1E6B4A" stroke-width="18" stroke-dasharray="113 170" stroke-dashoffset="0" class="donut-seg"/>
+              <circle cx="60" cy="60" r="45" fill="none" stroke="#2563EB" stroke-width="18" stroke-dasharray="57 226" stroke-dashoffset="-113" class="donut-seg"/>
+              <circle cx="60" cy="60" r="45" fill="none" stroke="#F59E0B" stroke-width="18" stroke-dasharray="34 249" stroke-dashoffset="-170" class="donut-seg"/>
+              <circle cx="60" cy="60" r="45" fill="none" stroke="#DC2626" stroke-width="18" stroke-dasharray="19 264" stroke-dashoffset="-204" class="donut-seg"/>
+              <text x="60" y="55" text-anchor="middle" class="donut-num">12</text>
+              <text x="60" y="70" text-anchor="middle" class="donut-label-txt">طلب</text>
+            </svg>
+            <div class="donut-legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#1E6B4A"></span><span>زيارة صفية</span><strong>5</strong></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#2563EB"></span><span>مرافقة بيداغوجية</span><strong>3</strong></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#F59E0B"></span><span>استفسار إداري</span><strong>2</strong></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#DC2626"></span><span>شكوى</span><strong>2</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECENT ACTIVITY -->
+      <div class="activity-card">
+        <div class="card-header">
+          <h3 class="card-title">آخر النشاطات</h3>
+          <button class="btn-text" onclick="inspectorTab('tickets', document.querySelector('.nav-item:nth-child(2)'))">عرض الكل ←</button>
+        </div>
+        <div class="activity-list">
+          <div class="activity-row">
+            <div class="activity-avatar">ف</div>
+            <div class="activity-body">
+              <div class="activity-name">أ. فاطمة بوزيد <span class="activity-school">— ابتدائية الوحدة</span></div>
+              <div class="activity-desc">طلب زيارة صفية للقسم الثالث ابتدائي</div>
+            </div>
+            <div class="activity-meta">
+              <span class="ticket-badge badge-visit">زيارة صفية</span>
+              <span class="activity-time">منذ ساعتين</span>
+            </div>
+          </div>
+          <div class="activity-row">
+            <div class="activity-avatar">ك</div>
+            <div class="activity-body">
+              <div class="activity-name">أ. كريم سليماني <span class="activity-school">— ابتدائية النصر</span></div>
+              <div class="activity-desc">رفع تقرير الفصل الثاني — مادة الرياضيات</div>
+            </div>
+            <div class="activity-meta">
+              <span class="ticket-badge badge-report">تقرير</span>
+              <span class="activity-time">منذ 4 ساعات</span>
+            </div>
+          </div>
+          <div class="activity-row">
+            <div class="activity-avatar">س</div>
+            <div class="activity-body">
+              <div class="activity-name">أ. سامية حمدي <span class="activity-school">— ابتدائية الشهداء</span></div>
+              <div class="activity-desc">طلب مرافقة بيداغوجية في مادة اللغة العربية</div>
+            </div>
+            <div class="activity-meta">
+              <span class="ticket-badge badge-accomp">مرافقة</span>
+              <span class="activity-time">أمس</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: TICKETS -->
+    <div id="tab-tickets" class="tab-panel">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">إدارة الطلبات</h2>
+          <p class="page-subtitle">جميع الطلبات الواردة من الأساتذة</p>
+        </div>
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="filterTickets('all', this)">الكل (12)</button>
+          <button class="filter-btn" onclick="filterTickets('pending', this)">معلق (4)</button>
+          <button class="filter-btn" onclick="filterTickets('inprogress', this)">قيد المعالجة (5)</button>
+          <button class="filter-btn" onclick="filterTickets('closed', this)">مغلق (3)</button>
+        </div>
+      </div>
+
+      <div class="tickets-table-wrap">
+        <table class="tickets-table">
+          <thead>
+            <tr>
+              <th>المُقدِّم</th>
+              <th>نوع الطلب</th>
+              <th>المدرسة</th>
+              <th>التاريخ</th>
+              <th>الحالة</th>
+              <th>إجراء</th>
+            </tr>
+          </thead>
+          <tbody id="tickets-body">
+            <tr data-status="pending">
+              <td><div class="table-user"><div class="table-avatar">ف</div><span>أ. فاطمة بوزيد</span></div></td>
+              <td><span class="ticket-badge badge-visit" data-type="visit">زيارة صفية</span></td>
+              <td>ابتدائية الوحدة</td>
+              <td>25 مارس 2026</td>
+              <td><span class="status-badge status-pending">معلق</span></td>
+              <td><button class="btn-action" onclick="openTicketModal(this, 'طلب زيارة صفية للوحدة الثانية — درس القراءة المنهجية للصف الثالث ابتدائي. المادة: اللغة العربية.')">معالجة</button></td>
+            </tr>
+            <tr data-status="pending">
+              <td><div class="table-user"><div class="table-avatar">س</div><span>أ. سامية حمدي</span></div></td>
+              <td><span class="ticket-badge badge-accomp" data-type="accomp">مرافقة بيداغوجية</span></td>
+              <td>ابتدائية الشهداء</td>
+              <td>24 مارس 2026</td>
+              <td><span class="status-badge status-pending">معلق</span></td>
+              <td><button class="btn-action" onclick="openTicketModal(this, 'طلب مرافقة بيداغوجية في التعبير الشفهي.')">معالجة</button></td>
+            </tr>
+            <tr data-status="inprogress">
+              <td><div class="table-user"><div class="table-avatar">ع</div><span>أ. عمر بن علي</span></div></td>
+              <td><span class="ticket-badge badge-admin" data-type="admin">استفسار إداري</span></td>
+              <td>ابتدائية الفتح</td>
+              <td>22 مارس 2026</td>
+              <td><span class="status-badge status-inprogress">قيد المعالجة</span></td>
+              <td><button class="btn-action" onclick="openTicketModal(this, 'استفسار حول ملف الترقية في الرتبة.')">عرض</button></td>
+            </tr>
+            <tr data-status="pending">
+              <td><div class="table-user"><div class="table-avatar">ن</div><span>أ. نادية مسعود</span></div></td>
+              <td><span class="ticket-badge badge-complaint" data-type="complaint">شكوى</span></td>
+              <td>ابتدائية 5 جويلية</td>
+              <td>21 مارس 2026</td>
+              <td><span class="status-badge status-pending">معلق</span></td>
+              <td><button class="btn-action" onclick="openTicketModal(this, 'شكوى تتعلق بظروف العمل داخل الفصل واكتظاظ التلاميذ.')">معالجة</button></td>
+            </tr>
+            <tr data-status="closed">
+              <td><div class="table-user"><div class="table-avatar">ك</div><span>أ. كريم سليماني</span></div></td>
+              <td><span class="ticket-badge badge-visit" data-type="visit">زيارة صفية</span></td>
+              <td>ابتدائية النصر</td>
+              <td>18 مارس 2026</td>
+              <td><span class="status-badge status-closed">مغلق</span></td>
+              <td><button class="btn-action btn-view" onclick="openTicketModal(this, 'تمت الزيارة الصفية بنجاح وتقييم الأستاذ.')">عرض</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: REPORTS -->
+    <div id="tab-reports" class="tab-panel">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">متابعة التقارير البيداغوجية</h2>
+          <p class="page-subtitle">الفصل الدراسي الثاني — 2025/2026</p>
+        </div>
+      </div>
+
+      <div class="reports-summary-row">
+        <div class="rsummary-card green">
+          <div class="rsummary-num">34</div>
+          <div class="rsummary-label">تقرير مُسلَّم</div>
+        </div>
+        <div class="rsummary-card blue">
+          <div class="rsummary-num">6</div>
+          <div class="rsummary-label">قيد المراجعة</div>
+        </div>
+        <div class="rsummary-card red">
+          <div class="rsummary-num">7</div>
+          <div class="rsummary-label">متأخر</div>
+        </div>
+      </div>
+
+      <div class="reports-grid">
+        <div class="report-row-card submitted">
+          <div class="rcard-avatar">ك</div>
+          <div class="rcard-body">
+            <div class="rcard-name">أ. كريم سليماني</div>
+            <div class="rcard-school">ابتدائية النصر — الصف الخامس — الرياضيات</div>
+          </div>
+          <div class="rcard-meta">
+            <span class="rcard-date">رُفع: 24 مارس</span>
+            <span class="rcard-status green">✓ مُعتمَد</span>
+          </div>
+          <button class="rcard-btn" onclick="showToast('جاري فتح التقرير...')">عرض</button>
+        </div>
+        <div class="report-row-card review">
+          <div class="rcard-avatar">ف</div>
+          <div class="rcard-body">
+            <div class="rcard-name">أ. فاطمة بوزيد</div>
+            <div class="rcard-school">ابتدائية الوحدة — الصف الثالث — اللغة العربية</div>
+          </div>
+          <div class="rcard-meta">
+            <span class="rcard-date">رُفع: 22 مارس</span>
+            <span class="rcard-status blue">⏳ قيد المراجعة</span>
+          </div>
+          <button class="rcard-btn" onclick="approveReport(this)">اعتماد</button>
+        </div>
+        <div class="report-row-card late">
+          <div class="rcard-avatar">م</div>
+          <div class="rcard-body">
+            <div class="rcard-name">أ. محمد لعريبي</div>
+            <div class="rcard-school">ابتدائية الفجر — الصف الأول — التربية الإسلامية</div>
+          </div>
+          <div class="rcard-meta">
+            <span class="rcard-date">الموعد: 15 مارس</span>
+            <span class="rcard-status red">✗ متأخر 12 يوم</span>
+          </div>
+          <button class="rcard-btn btn-warn" onclick="sendReminder(this)">تذكير</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: TEACHERS -->
+    <div id="tab-teachers" class="tab-panel">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">دليل الأساتذة</h2>
+          <p class="page-subtitle">47 أستاذاً في الدائرة التعليمية</p>
+        </div>
+        <div class="search-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" class="search-input" placeholder="بحث عن أستاذ..." oninput="filterTeachers(this.value)" />
+        </div>
+      </div>
+      <div class="teachers-grid" id="teachers-grid">
+        <!-- Generated by JS -->
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TEACHER DASHBOARD
+════════════════════════════════════════════ -->
+<div id="screen-teacher" class="screen">
+  <aside class="sidebar sidebar-teacher">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">
+        <svg viewBox="0 0 32 32" fill="none"><path d="M16 2L30 9V18C30 25.18 23.73 31.84 16 34C8.27 31.84 2 25.18 2 18V9L16 2Z" fill="url(#sideGrad2)"/><path d="M10 16H22M16 10V22" stroke="white" stroke-width="2" stroke-linecap="round"/><defs><linearGradient id="sideGrad2" x1="2" y1="2" x2="30" y2="34" gradientUnits="userSpaceOnUse"><stop stop-color="#1E6B4A"/><stop offset="1" stop-color="#0D3D26"/></linearGradient></defs></svg>
+      </div>
+      <div>
+        <div class="sidebar-title">الإشراف التربوي</div>
+        <div class="sidebar-role">بوابة الأستاذ</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" onclick="teacherTab('t-overview', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span>ملخصي</span>
+      </a>
+      <a href="#" class="nav-item" onclick="teacherTab('t-request', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        <span>طلب جديد</span>
+      </a>
+      <a href="#" class="nav-item" onclick="teacherTab('t-reports', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+        <span>تقاريري</span>
+      </a>
+      <a href="#" class="nav-item" onclick="teacherTab('t-profile', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>ملفي الشخصي</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-avatar teal">أ</div>
+      <div class="user-info">
+        <div class="user-name">أ. أمينة بلقاسم</div>
+        <div class="user-role-tag">أستاذة — الصف الثالث</div>
+      </div>
+      <button class="logout-btn" onclick="logout()" title="تسجيل الخروج">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <!-- TAB: TEACHER OVERVIEW -->
+    <div id="tab-t-overview" class="tab-panel active">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">مرحباً، أ. أمينة 👋</h2>
+          <p class="page-subtitle">ابتدائية الوحدة — الصف الثالث ابتدائي</p>
+        </div>
+        <span class="date-badge" id="current-date-2">📅 اليوم</span>
+      </div>
+
+      <div class="teacher-summary-grid">
+        <div class="tsummary-card">
+          <div class="tsummary-icon" style="background:#DCFCE7;color:#166534;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+          </div>
+          <div class="tsummary-info">
+            <div class="tsummary-num">2</div>
+            <div class="tsummary-label">تقارير مُسلَّمة</div>
+          </div>
+        </div>
+        <div class="tsummary-card">
+          <div class="tsummary-icon" style="background:#DBEAFE;color:#1D4ED8;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <div class="tsummary-info">
+            <div class="tsummary-num">1</div>
+            <div class="tsummary-label">طلب جارٍ</div>
+          </div>
+        </div>
+        <div class="tsummary-card">
+          <div class="tsummary-icon" style="background:#FEF9C3;color:#854D0E;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>
+          </div>
+          <div class="tsummary-info">
+            <div class="tsummary-num">2</div>
+            <div class="tsummary-label">زيارة مقررة</div>
+          </div>
+        </div>
+        <div class="tsummary-card">
+          <div class="tsummary-icon" style="background:#FCE7F3;color:#9D174D;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          </div>
+          <div class="tsummary-info">
+            <div class="tsummary-num">85%</div>
+            <div class="tsummary-label">نسبة الإنجاز</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="my-requests-section">
+        <div class="card-header">
+          <h3 class="card-title">آخر طلباتي</h3>
+          <button class="btn-text" onclick="teacherTab('t-request', document.querySelector('#screen-teacher .nav-item:nth-child(2)'))">+ طلب جديد</button>
+        </div>
+        <div class="my-requests-list">
+          <div class="mreq-item">
+            <div class="mreq-type"><span class="ticket-badge badge-visit">زيارة صفية</span></div>
+            <div class="mreq-desc">طلب زيارة صفية للوحدة الثانية — درس القراءة</div>
+            <div class="mreq-date">20 مارس 2026</div>
+            <div><span class="status-badge status-inprogress">قيد المعالجة</span></div>
+          </div>
+          <div class="mreq-item">
+            <div class="mreq-type"><span class="ticket-badge badge-accomp">مرافقة</span></div>
+            <div class="mreq-desc">طلب مرافقة بيداغوجية في التعبير الشفهي</div>
+            <div class="mreq-date">10 مارس 2026</div>
+            <div><span class="status-badge status-closed">مغلق</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: NEW REQUEST -->
+    <div id="tab-t-request" class="tab-panel">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">تقديم طلب جديد</h2>
+          <p class="page-subtitle">أرسل طلبك مباشرةً إلى المفتش التربوي</p>
+        </div>
+      </div>
+
+      <div class="form-card">
+        <div class="form-section-title">
+          <div class="form-section-num">01</div>
+          <div>
+            <div class="fst-label">نوع الطلب</div>
+            <div class="fst-sub">اختر نوع الطلب الذي تودّ تقديمه</div>
+          </div>
+        </div>
+        <div class="request-type-grid" id="request-type-grid">
+          <div class="rtype-card active" onclick="selectRequestType(this, 'visit')">
+            <div class="rtype-icon">🏫</div>
+            <div class="rtype-label">طلب زيارة صفية</div>
+            <div class="rtype-desc">زيارة المفتش لقسمك لمتابعة الدرس</div>
+          </div>
+          <div class="rtype-card" onclick="selectRequestType(this, 'accomp')">
+            <div class="rtype-icon">🤝</div>
+            <div class="rtype-label">مرافقة بيداغوجية</div>
+            <div class="rtype-desc">دعم ومرافقة في المجال التربوي</div>
+          </div>
+          <div class="rtype-card" onclick="selectRequestType(this, 'admin')">
+            <div class="rtype-icon">📋</div>
+            <div class="rtype-label">استفسار إداري</div>
+            <div class="rtype-desc">استفسار حول إجراءات إدارية</div>
+          </div>
+          <div class="rtype-card" onclick="selectRequestType(this, 'complaint')">
+            <div class="rtype-icon">⚠️</div>
+            <div class="rtype-label">تقديم شكوى</div>
+            <div class="rtype-desc">شكوى تتعلق بالوضع المهني</div>
+          </div>
+        </div>
+
+        <div class="form-divider"></div>
+
+        <div class="form-section-title">
+          <div class="form-section-num">02</div>
+          <div>
+            <div class="fst-label">تفاصيل الطلب</div>
+            <div class="fst-sub">يُرجى ملء جميع الحقول المطلوبة</div>
+          </div>
+        </div>
+
+        <div class="request-form" id="request-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">عنوان الطلب <span class="required">*</span></label>
+              <input class="form-input" type="text" id="req-title" placeholder="مثال: طلب زيارة لدرس القراءة" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">التاريخ المقترح <span class="required">*</span></label>
+              <input class="form-input" type="date" id="req-date" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">المادة الدراسية</label>
+              <select class="form-input" id="req-subject">
+                <option value="">اختر المادة...</option>
+                <option>اللغة العربية</option>
+                <option>الرياضيات</option>
+                <option>العلوم</option>
+                <option>التربية الإسلامية</option>
+                <option>التاريخ والجغرافيا</option>
+                <option>التربية البدنية</option>
+                <option>الفرنسية</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">الوحدة / الدرس</label>
+              <input class="form-input" type="text" id="req-unit" placeholder="مثال: الوحدة 3 — التعبير الشفهي" />
+            </div>
+          </div>
+          <div class="form-group full">
+            <label class="form-label">وصف الطلب <span class="required">*</span></label>
+            <textarea class="form-textarea" id="req-desc" rows="4" placeholder="اشرح طلبك بشكل واضح ومفصل..."></textarea>
+          </div>
+          <div class="form-group full">
+            <label class="form-label">ملاحظات إضافية</label>
+            <textarea class="form-textarea" id="req-notes" rows="2" placeholder="أي معلومات إضافية تراها ضرورية..."></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn-reset" onclick="resetForm()">إعادة تعيين</button>
+            <button class="btn-submit" onclick="submitRequest()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+              إرسال الطلب
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: TEACHER REPORTS -->
+    <div id="tab-t-reports" class="tab-panel">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">تقاريري البيداغوجية</h2>
+          <p class="page-subtitle">متابعة حالة تقاريرك الدورية</p>
+        </div>
+        <button class="btn-primary" onclick="openUploadModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          رفع تقرير
+        </button>
+      </div>
+
+      <div class="teacher-reports-list">
+        <div class="treport-card approved">
+          <div class="treport-icon">📄</div>
+          <div class="treport-body">
+            <div class="treport-title">تقرير الفصل الأول — اللغة العربية</div>
+            <div class="treport-sub">الصف الثالث — ابتدائية الوحدة</div>
+            <div class="treport-meta">رُفع بتاريخ: 15 نوفمبر 2025</div>
+          </div>
+          <div class="treport-status">
+            <span class="rcard-status green">✓ مُعتمَد</span>
+            <div class="treport-note">ملاحظة المفتش: تقرير شامل وجيد الإعداد</div>
+          </div>
+        </div>
+        <div class="treport-card review">
+          <div class="treport-icon">📄</div>
+          <div class="treport-body">
+            <div class="treport-title">تقرير الفصل الثاني — اللغة العربية</div>
+            <div class="treport-sub">الصف الثالث — ابتدائية الوحدة</div>
+            <div class="treport-meta">رُفع بتاريخ: 22 مارس 2026</div>
+          </div>
+          <div class="treport-status">
+            <span class="rcard-status blue">⏳ قيد المراجعة</span>
+            <div class="treport-note">بانتظار مراجعة المفتش</div>
+          </div>
+        </div>
+        <div class="treport-card pending">
+          <div class="treport-icon">📋</div>
+          <div class="treport-body">
+            <div class="treport-title">تقرير الفصل الثاني — الرياضيات</div>
+            <div class="treport-sub">الصف الثالث — ابتدائية الوحدة</div>
+            <div class="treport-meta">الموعد النهائي: 30 مارس 2026</div>
+          </div>
+          <div class="treport-status">
+            <span class="rcard-status amber">⚠ لم يُرفع بعد</span>
+            <div class="treport-note">تبقّى أيام قليلة للموعد النهائي</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: PROFILE -->
+    <div id="tab-t-profile" class="tab-panel">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">ملفي الشخصي المهني</h2>
+        </div>
+      </div>
+      <div class="profile-card">
+        <div class="profile-header">
+          <div class="profile-avatar-large">أ</div>
+          <div class="profile-main-info">
+            <h3 class="profile-name">أمينة بلقاسم</h3>
+            <p class="profile-title">أستاذة ابتدائي — الرتبة: أستاذة رئيسية</p>
+            <span class="profile-badge">نشط</span>
+          </div>
+        </div>
+        <div class="profile-details-grid">
+          <div class="pdetail-item">
+            <div class="pdetail-label">المدرسة</div>
+            <div class="pdetail-val">ابتدائية الوحدة</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">الدائرة</div>
+            <div class="pdetail-val">دائرة سيدي علي</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">الصف المسؤول</div>
+            <div class="pdetail-val">الثالث ابتدائي — شعبة (أ)</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">المواد الدراسية</div>
+            <div class="pdetail-val">اللغة العربية، الرياضيات</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">رقم الاستدعاء</div>
+            <div class="pdetail-val">2026-03-451</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">تاريخ التوظيف</div>
+            <div class="pdetail-val">سبتمبر 2015</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">المفتش المختص</div>
+            <div class="pdetail-val">أ. محمد الطاهر</div>
+          </div>
+          <div class="pdetail-item">
+            <div class="pdetail-label">البريد الإلكتروني</div>
+            <div class="pdetail-val">teacher@edu.dz</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL: TICKET DETAIL WITH PRINT FEATURE
+════════════════════════════════════════════ -->
+<div id="ticket-modal" class="modal-overlay" onclick="closeModal('ticket-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()" id="print-area">
+    <div class="modal-header">
+      <h3>تفاصيل الطلب</h3>
+      <button class="modal-close" onclick="closeModal('ticket-modal')">✕</button>
+    </div>
+    
+    <!-- هذا القسم مخصص ليظهر في الطباعة بشكل رسمي -->
+    <div style="display:none;" class="print-header">
+        <div class="print-title">الجمهورية الجزائرية الديمقراطية الشعبية</div>
+        <div class="print-subtitle">وزارة التربية الوطنية - مفتشية التعليم الابتدائي</div>
+        <div style="margin-top:20px; font-weight:bold; font-size:18px;">طلب تأشير / تدخل بيداغوجي</div>
+    </div>
+
+    <div class="modal-body">
+      <div class="modal-ticket-info">
+        <div class="print-row mti-row"><span class="print-label mti-key">المُقدِّم:</span><span class="print-value mti-val" id="modal-name">أ. فاطمة بوزيد</span></div>
+        <div class="print-row mti-row"><span class="print-label mti-key">النوع:</span><span class="print-value mti-val" id="modal-type">زيارة صفية</span></div>
+        <div class="print-row mti-row"><span class="print-label mti-key">المدرسة:</span><span class="print-value mti-val" id="modal-school">ابتدائية الوحدة</span></div>
+        <div class="print-row mti-row"><span class="print-label mti-key">التاريخ:</span><span class="print-value mti-val" id="modal-date">25 مارس 2026</span></div>
+        <div class="print-row mti-row"><span class="print-label mti-key">التفاصيل:</span><span class="print-value mti-val" id="modal-desc">طلب زيارة صفية للوحدة الثانية — درس القراءة المنهجية.</span></div>
+      </div>
+      
+      <div class="modal-response-section">
+        <label class="form-label">رد المفتش / ملاحظات</label>
+        <textarea class="form-textarea" rows="3" placeholder="أكتب ردك هنا..."></textarea>
+      </div>
+    </div>
+
+    <!-- توقيعات تظهر فقط في الطباعة -->
+    <div style="display:none;" class="print-footer">
+        <div class="print-sign">توقيع الأستاذ(ة)</div>
+        <div class="print-sign">تأشيرة المفتش</div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-print" onclick="window.print()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        طباعة رسمية
+      </button>
+      <button class="btn-danger" onclick="rejectTicket()">رفض</button>
+      <button class="btn-success" onclick="acceptTicket()">قبول وجدولة</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     MODAL: UPLOAD REPORT
+════════════════════════════════════════════ -->
+<div id="upload-modal" class="modal-overlay" onclick="closeModal('upload-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>رفع تقرير بيداغوجي</h3>
+      <button class="modal-close" onclick="closeModal('upload-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">عنوان التقرير</label>
+        <input class="form-input" type="text" placeholder="مثال: تقرير الفصل الثاني — الرياضيات" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">الفترة</label>
+        <select class="form-input">
+          <option>الفصل الأول</option>
+          <option selected>الفصل الثاني</option>
+          <option>الفصل الثالث</option>
+        </select>
+      </div>
+      <div class="upload-zone" onclick="showToast('جاري اختيار الملف...')">
+        <div class="upload-icon">📎</div>
+        <div class="upload-text">اضغط لاختيار ملف PDF أو Word</div>
+        <div class="upload-hint">الحد الأقصى: 10 ميغابايت</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('upload-modal')">إلغاء</button>
+      <button class="btn-success" onclick="uploadReport()">رفع التقرير</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- ════════════════════════════════════════════
+     JAVASCRIPT LOGIC
+════════════════════════════════════════════ -->
+<script>
+  // -- MOCK DATA --
+  const DB = {
+    teachers: [
+      { id: 2,  name: 'أمينة بلقاسم',   school: 'م/م الوحدة',    grade: 'الثالث',  subject: 'اللغة العربية',      report: 'approved',  color: '#1E6B4A' },
+      { id: 3,  name: 'كريم سليماني',    school: 'مدرسة المسيرة',     grade: 'الخامس',  subject: 'الرياضيات',    report: 'approved',  color: '#2563EB' },
+      { id: 4,  name: 'فاطمة بوزيد',     school: 'م/م طارق بن زياد',    grade: 'الثالث',  subject: 'اللغة الفرنسية',      report: 'review',    color: '#7C3AED' },
+      { id: 5,  name: 'سامية حمدي',      school: 'مدرسة الأندلس',   grade: 'الأول',   subject: 'اللغة العربية',      report: 'late',      color: '#DC2626' },
+      { id: 6,  name: 'عمر بن علي',      school: 'م/م الفتح',     grade: 'الرابع',  subject: 'النشاط العلمي',       report: 'approved',  color: '#D97706' },
+      { id: 7,  name: 'نادية مسعود',     school: 'مدرسة يعقوب المنصور',  grade: 'الرابع',  subject: 'اللغة الأمازيغية',       report: 'late',      color: '#0891B2' },
+      { id: 8,  name: 'هاجر قادري',      school: 'م/م الأمل',     grade: 'الثاني',  subject: 'التربية البدنية',report: 'approved',  color: '#16A34A' }
+    ]
+  };
+
+  let currentRole = 'inspector';
+  let selectedRequestType = 'visit';
+
+  // -- AUTH --
+  function setRole(role, btn) {
+    currentRole = role;
+    document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('login-email').value = role === 'inspector' ? 'inspector@taalim.ma' : 'teacher@taalim.ma';
+  }
+
+  function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    if (!email) return;
+
+    if (email.includes('inspector') || currentRole === 'inspector') {
+      showScreen('inspector');
+    } else {
+      showScreen('teacher');
+    }
+  }
+
+  function logout() {
+    showScreen('login');
+  }
+
+  function toggleRegister(show) {
+    if (show) {
+      document.getElementById('screen-login').classList.remove('active');
+      document.getElementById('screen-login').style.display = 'none';
+      document.getElementById('screen-register').style.display = 'flex';
+      document.getElementById('screen-register').classList.add('active');
+    } else {
+      document.getElementById('screen-register').classList.remove('active');
+      document.getElementById('screen-register').style.display = 'none';
+      document.getElementById('screen-login').style.display = 'flex';
+      document.getElementById('screen-login').classList.add('active');
+    }
+  }
+
+  function handleRegister(e) {
+    e.preventDefault();
+    const som = document.getElementById('reg-som').value;
+    if (!som) return;
+    
+    // محاكاة إرسال الطلب
+    showToast('تم إرسال طلب الانضمام بنجاح! بانتظار تفعيل المفتش لحسابك بناءً على رقم التأجير.');
+    setTimeout(() => { toggleRegister(false); }, 3000);
+  }
+
+  function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => {
+      s.classList.remove('active');
+      s.style.display = 'none';
+    });
+    const target = document.getElementById(`screen-${name}`);
+    if (target) {
+      target.style.display = 'flex';
+      target.classList.add('active');
+    }
+    if (name === 'inspector') {
+      renderTeachersGrid();
+      animateCounters();
+    }
+    if (name === 'teacher') {
+      const today = new Date().toISOString().split('T')[0];
+      const dateField = document.getElementById('req-date');
+      if (dateField) dateField.value = today;
+    }
+  }
+
+  // -- NAVIGATION --
+  function inspectorTab(tabId, linkEl) {
+    event && event.preventDefault();
+    document.querySelectorAll('#screen-inspector .tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#inspector-sidebar .nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+    if (linkEl) linkEl.classList.add('active');
+    if (tabId === 'teachers') renderTeachersGrid();
+  }
+
+  function teacherTab(tabId, linkEl) {
+    event && event.preventDefault();
+    document.querySelectorAll('#screen-teacher .tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#screen-teacher .nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+    if (linkEl) linkEl.classList.add('active');
+  }
+
+  // -- COUNTERS --
+  function animateCounters() {
+    document.querySelectorAll('.stat-num[data-target]').forEach(el => {
+      const target = parseInt(el.dataset.target);
+      let current = 0;
+      const step = Math.ceil(target / 40);
+      const interval = setInterval(() => {
+        current = Math.min(current + step, target);
+        el.textContent = current;
+        if (current >= target) clearInterval(interval);
+      }, 25);
+    });
+  }
+
+  // -- RENDER TEACHERS --
+  function renderTeachersGrid(filter = '') {
+    const grid = document.getElementById('teachers-grid');
+    if (!grid) return;
+    const filtered = DB.teachers.filter(t =>
+      t.name.includes(filter) || t.school.includes(filter) || t.grade.includes(filter)
+    );
+    grid.innerHTML = filtered.map(t => {
+      const statusMap = {
+        approved: { label: '✓ مُعتمَد', cls: 'green' },
+        review:   { label: '⏳ قيد المراجعة', cls: 'blue' },
+        late:     { label: '✗ متأخر', cls: 'red' },
+      };
+      const s = statusMap[t.report] || statusMap.approved;
+      const initials = t.name.replace('أ. ','').trim()[0];
+      return `
+        <div class="teacher-card">
+          <div class="tc-top">
+            <div class="tc-avatar" style="background:${t.color}">${initials}</div>
+            <div>
+              <div class="tc-name">${t.name}</div>
+              <div class="tc-school">${t.school}</div>
+            </div>
+          </div>
+          <div class="tc-grade">الصف ${t.grade} — ${t.subject}</div>
+          <div class="tc-report-status">
+            <span>التقرير الدوري:</span>
+            <span class="rcard-status ${s.cls}">${s.label}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function filterTeachers(val) { renderTeachersGrid(val); }
+
+  // -- TICKETS FILTER --
+  function filterTickets(status, btn) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const rows = document.querySelectorAll('#tickets-body tr[data-status]');
+    rows.forEach(row => {
+      if (status === 'all' || row.dataset.status === status) row.style.display = '';
+      else row.style.display = 'none';
+    });
+  }
+
+  // -- MODALS & ACTIONS --
+  let activeTicketRow = null;
+
+  function openTicketModal(btn, desc) {
+    const row = btn.closest('tr');
+    activeTicketRow = row;
+    const cells = row.querySelectorAll('td');
+    
+    // Set dynamic info
+    document.getElementById('modal-name').textContent = cells[0].querySelector('span').textContent;
+    document.getElementById('modal-type').textContent = cells[1].textContent.trim();
+    document.getElementById('modal-school').textContent = cells[2].textContent;
+    document.getElementById('modal-date').textContent = cells[3].textContent;
+    document.getElementById('modal-desc').textContent = desc || "لا يوجد وصف إضافي للطلب.";
+    
+    // Show Modal
+    document.getElementById('ticket-modal').classList.add('open');
+    document.querySelector('.print-header').style.display = 'block';
+    document.querySelector('.print-footer').style.display = 'flex';
+  }
+
+  function acceptTicket() {
+    if (activeTicketRow) {
+      activeTicketRow.querySelector('.status-badge').className = 'status-badge status-inprogress';
+      activeTicketRow.querySelector('.status-badge').textContent = 'قيد المعالجة';
+      activeTicketRow.dataset.status = 'inprogress';
+      activeTicketRow.querySelector('.btn-action').textContent = 'عرض';
+      activeTicketRow.querySelector('.btn-action').classList.add('btn-view');
+    }
+    closeModal('ticket-modal');
+    showToast('✅ تم قبول الطلب وجدولته بنجاح');
+  }
+
+  function rejectTicket() {
+    if (activeTicketRow) {
+      activeTicketRow.querySelector('.status-badge').className = 'status-badge status-closed';
+      activeTicketRow.querySelector('.status-badge').textContent = 'مغلق';
+      activeTicketRow.dataset.status = 'closed';
+    }
+    closeModal('ticket-modal');
+    showToast('❌ تم رفض الطلب');
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    if(id === 'ticket-modal') {
+      document.querySelector('.print-header').style.display = 'none';
+      document.querySelector('.print-footer').style.display = 'none';
+    }
+  }
+
+  function openUploadModal() { openModal('upload-modal'); }
+  
+  function uploadReport() {
+    closeModal('upload-modal');
+    showToast('✅ تم رفع التقرير بنجاح، في انتظار مراجعة المفتش');
+  }
+
+  function approveReport(btn) {
+    const card = btn.closest('.report-row-card');
+    card.className = 'report-row-card submitted';
+    const status = card.querySelector('.rcard-status');
+    status.className = 'rcard-status green';
+    status.textContent = '✓ مُعتمَد';
+    btn.textContent = 'عرض';
+    btn.classList.remove('btn-warn');
+    showToast('✅ تم اعتماد التقرير بنجاح');
+  }
+
+  function sendReminder(btn) {
+    const name = btn.closest('.report-row-card').querySelector('.rcard-name').textContent;
+    showToast(`📩 تم إرسال تذكير إلى ${name}`);
+  }
+
+  // -- TEACHER FORM --
+  function selectRequestType(card, type) {
+    document.querySelectorAll('.rtype-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    selectedRequestType = type;
+  }
+
+  function submitRequest() {
+    const title = document.getElementById('req-title')?.value.trim();
+    const date  = document.getElementById('req-date')?.value;
+    const desc  = document.getElementById('req-desc')?.value.trim();
+
+    if (!title || !date || !desc) {
+      showToast('⚠ يُرجى ملء جميع الحقول الإلزامية');
+      return;
+    }
+    showToast('✅ تم إرسال طلبك إلى المفتش التربوي بنجاح');
+    resetForm();
+    teacherTab('t-overview', document.querySelector('#screen-teacher .nav-item:first-child'));
+  }
+
+  function resetForm() {
+    ['req-title', 'req-date', 'req-subject', 'req-unit', 'req-desc', 'req-notes'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    selectRequestType(document.querySelector('.rtype-card'), 'visit');
+  }
+
+  // -- TOAST --
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+  }
+
+  // -- INIT --
+  document.addEventListener('DOMContentLoaded', () => {
+    // Set dates dynamically (Moroccan Context: ar-MA)
+    const d = new Date().toLocaleDateString('ar-MA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    if(document.getElementById('current-date-1')) document.getElementById('current-date-1').textContent = `📅 ${d}`;
+    if(document.getElementById('current-date-2')) document.getElementById('current-date-2').textContent = `📅 ${d}`;
+    
+    showScreen('login');
+  });
+</script>
+</body>
+</html>
