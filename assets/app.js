@@ -1,6 +1,14 @@
 const SUPABASE_URL = 'https://lftlcepnsvvhoaopnqjf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmdGxjZXBuc3Z2aG9hb3BucWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NjA4OTIsImV4cCI6MjA5MDEzNjg5Mn0.bUUXG0DHhUcpeeogMKqM2LOiBvHmlbwO8ukB1qqnyQE';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let supabase = null;
+try {
+  if (window.supabase?.createClient) {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+} catch (err) {
+  console.error('Supabase init error', err);
+}
 
 const STATE = {
   currentRole: 'inspector',
@@ -35,6 +43,10 @@ const VISIT_TYPE_MAP = {
 
 function qs(sel, root = document) { return root.querySelector(sel); }
 function qsa(sel, root = document) { return [...root.querySelectorAll(sel)]; }
+function setText(sel, value) { const el = typeof sel === 'string' ? qs(sel) : sel; if (el) el.textContent = value; }
+function setHtml(sel, value) { const el = typeof sel === 'string' ? qs(sel) : sel; if (el) el.innerHTML = value; }
+function hasSupabase() { return !!supabase; }
+
 function escapeHtml(str = '') {
   return String(str)
     .replaceAll('&', '&amp;')
@@ -43,18 +55,22 @@ function escapeHtml(str = '') {
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
 }
+
 function formatDate(value) {
   if (!value) return '—';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
+  if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString('ar-MA', { year: 'numeric', month: 'long', day: 'numeric' });
 }
+
 function statusClass(status) {
-  return ({ pending: 'status-pending', in_progress: 'status-inprogress', closed: 'status-closed', rejected: 'status-closed', scheduled: 'status-pending', completed: 'status-inprogress', report_written: 'status-closed', follow_up_required: 'status-inprogress' })[status] || 'status-pending';
+  return ({ pending: 'status-pending', in_progress: 'status-inprogress', closed: 'status-closed', rejected: 'status-closed', scheduled: 'status-pending', completed: 'status-inprogress', report_written: 'status-closed', follow_up_required: 'status-inprogress', approved: 'status-closed' })[status] || 'status-pending';
 }
+
 function statusLabel(status) {
   return ({ pending: 'معلق', in_progress: 'قيد المعالجة', closed: 'مغلق', rejected: 'مرفوض', scheduled: 'مجدولة', completed: 'منجزة', report_written: 'أنجز التقرير', follow_up_required: 'متابعة مطلوبة', approved: 'مقبول' })[status] || status;
 }
+
 function scoreBadge(score) {
   if (score >= 85) return ['ممتاز', 'score-excellent'];
   if (score >= 70) return ['جيد', 'score-good'];
@@ -63,7 +79,7 @@ function scoreBadge(score) {
 }
 
 function showToast(msg, isSticky = false) {
-  const t = document.getElementById('toast');
+  const t = qs('#toast');
   if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
@@ -71,6 +87,53 @@ function showToast(msg, isSticky = false) {
     clearTimeout(showToast._timer);
     showToast._timer = setTimeout(() => t.classList.remove('show'), 3200);
   }
+}
+
+function requireSupabase() {
+  if (hasSupabase()) return true;
+  showToast('تعذر تحميل Supabase. تحقق من الإنترنت أو CDN.', true);
+  return false;
+}
+
+async function sbSelect(table, queryBuilder) {
+  if (!requireSupabase()) return [];
+  let q = supabase.from(table).select('*');
+  if (queryBuilder) q = queryBuilder(q);
+  const { data, error } = await q;
+  if (error) {
+    console.error(table, error);
+    return [];
+  }
+  return data || [];
+}
+
+async function ensureProfileFromSession(user) {
+  if (!requireSupabase() || !user) return null;
+
+  const inferredRole = user.user_metadata?.role || (user.email?.toLowerCase().includes('inspector') ? 'inspector' : 'teacher');
+  const inferredStatus = inferredRole === 'inspector' ? 'approved' : 'pending';
+
+  const payload = {
+    id: user.id,
+    full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'مستخدم',
+    email: user.email,
+    role: inferredRole,
+    som: user.user_metadata?.som || null,
+    status: inferredStatus,
+  };
+
+  const { error: upsertError } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
+  if (upsertError) {
+    console.error('ensureProfileFromSession upsert', upsertError);
+    return null;
+  }
+
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  if (error) {
+    console.error('ensureProfileFromSession fetch', error);
+    return null;
+  }
+  return data;
 }
 
 function setRole(role, btn) {
@@ -109,90 +172,124 @@ function teacherTab(tabId, linkEl) {
 }
 
 function toggleRegister(show) {
+  const login = qs('#screen-login');
+  const register = qs('#screen-register');
+  if (!login || !register) return;
   if (show) {
-    qs('#screen-login').style.display = 'none';
-    qs('#screen-login').classList.remove('active');
-    qs('#screen-register').style.display = 'flex';
-    qs('#screen-register').classList.add('active');
+    login.style.display = 'none';
+    login.classList.remove('active');
+    register.style.display = 'flex';
+    register.classList.add('active');
   } else {
-    qs('#screen-register').style.display = 'none';
-    qs('#screen-register').classList.remove('active');
-    qs('#screen-login').style.display = 'flex';
-    qs('#screen-login').classList.add('active');
+    register.style.display = 'none';
+    register.classList.remove('active');
+    login.style.display = 'flex';
+    login.classList.add('active');
   }
 }
 
 async function handleRegister(e) {
   e.preventDefault();
-  const full_name = qs('#reg-name').value.trim();
-  const som = qs('#reg-som').value.trim();
-  const email = qs('#reg-email').value.trim();
-  const password = qs('#reg-password').value;
+  if (!requireSupabase()) return;
+  const full_name = qs('#reg-name')?.value.trim();
+  const som = qs('#reg-som')?.value.trim();
+  const email = qs('#reg-email')?.value.trim();
+  const password = qs('#reg-password')?.value;
+
   if (!full_name || !som || !email || !password) {
     showToast('يرجى إكمال جميع الحقول.');
     return;
   }
+
   showToast('جاري إرسال طلب الانضمام...');
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: { data: { full_name, som, role: 'teacher' } }
   });
+
   if (error) {
-    showToast('❌ ' + error.message);
+    showToast('❌ ' + error.message, true);
     return;
   }
+
   showToast('✅ تم إنشاء الحساب. بانتظار موافقة المفتش.');
   e.target.reset();
-  setTimeout(() => toggleRegister(false), 1400);
+  setTimeout(() => toggleRegister(false), 1500);
 }
 
 async function handleLogin(e) {
   e.preventDefault();
-  const email = qs('#login-email').value.trim();
-  const password = qs('#login-password').value;
+  if (!requireSupabase()) return;
+  const email = qs('#login-email')?.value.trim();
+  const password = qs('#login-password')?.value;
   if (!email || !password) return;
+
   showToast('جاري تسجيل الدخول...');
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    showToast('❌ ' + error.message);
+    showToast('❌ ' + error.message, true);
     return;
   }
+
   STATE.session = data.session;
   await bootstrapUser();
 }
 
 async function logout() {
-  await supabase.auth.signOut();
+  if (hasSupabase()) await supabase.auth.signOut();
   STATE.session = null;
   STATE.profile = null;
   showScreen('login');
 }
 
 async function bootstrapUser() {
-  const { data: sessionData } = await supabase.auth.getSession();
-  STATE.session = sessionData.session;
-  if (!STATE.session?.user) {
+  if (!requireSupabase()) {
     showScreen('login');
     return;
   }
-  const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', STATE.session.user.id).single();
-  if (error || !profile) {
-    showToast('تعذر جلب الملف الشخصي. تأكد من تشغيل SQL أولاً.', true);
-    console.error(error);
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    console.error(sessionError);
+    showScreen('login');
     return;
   }
+
+  STATE.session = sessionData.session;
+  const user = STATE.session?.user;
+  if (!user) {
+    showScreen('login');
+    return;
+  }
+
+  let profile = null;
+  let profileError = null;
+  ({ data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle());
+
+  if (profileError) console.error('profiles fetch', profileError);
+  if (!profile) {
+    profile = await ensureProfileFromSession(user);
+  }
+
+  if (!profile) {
+    showScreen('login');
+    showToast('تعذر إنشاء أو جلب الملف الشخصي. شغّل supabase.sql ثم حاول من جديد.', true);
+    return;
+  }
+
   STATE.profile = profile;
+
   if (profile.role === 'teacher' && profile.status === 'pending') {
     await supabase.auth.signOut();
     showScreen('login');
-    showToast('⏳ الحساب في انتظار موافقة المفتش.');
+    showToast('⏳ الحساب في انتظار موافقة المفتش.', true);
     return;
   }
   if (profile.role === 'teacher' && profile.status === 'rejected') {
     await supabase.auth.signOut();
     showScreen('login');
-    showToast('❌ تم رفض طلب الانضمام.');
+    showToast('❌ تم رفض طلب الانضمام.', true);
     return;
   }
 
@@ -208,21 +305,21 @@ async function bootstrapUser() {
 }
 
 function hydrateInspectorShell(profile) {
-  qs('#inspector-sidebar .user-name').textContent = profile.full_name || 'مفتش';
-  qs('#inspector-sidebar .user-role-tag').textContent = 'مفتش تربوي';
-  qs('#inspector-sidebar .user-avatar').textContent = (profile.full_name || 'م').trim().charAt(0);
+  setText('#inspector-sidebar .user-name', profile.full_name || 'مفتش');
+  setText('#inspector-sidebar .user-role-tag', 'مفتش تربوي');
+  setText('#inspector-sidebar .user-avatar', (profile.full_name || 'م').trim().charAt(0));
 }
 
 function hydrateTeacherShell(profile) {
   const fullName = profile.full_name || 'أستاذ';
   const initial = fullName.trim().charAt(0) || 'أ';
-  qs('#teacher-sidebar-name').textContent = fullName;
-  qs('#teacher-sidebar-avatar').textContent = initial;
-  qs('#teacher-welcome-title').textContent = `مرحباً، ${fullName} 👋`;
-  qs('#teacher-profile-avatar').textContent = initial;
-  qs('#teacher-profile-name').textContent = fullName;
-  qs('#teacher-profile-email').textContent = profile.email || STATE.session.user.email || '—';
-  qs('#teacher-profile-som').textContent = profile.som || '—';
+  setText('#teacher-sidebar-name', fullName);
+  setText('#teacher-sidebar-avatar', initial);
+  setText('#teacher-welcome-title', `مرحباً، ${fullName} 👋`);
+  setText('#teacher-profile-avatar', initial);
+  setText('#teacher-profile-name', fullName);
+  setText('#teacher-profile-email', profile.email || STATE.session?.user?.email || '—');
+  setText('#teacher-profile-som', profile.som || '—');
 
   const pdetail = qsa('.profile-details-grid .pdetail-val');
   if (pdetail[0]) pdetail[0].textContent = profile.school_name || 'غير محددة';
@@ -245,44 +342,61 @@ async function loadInspectorData() {
 }
 
 async function loadPendingTeachers() {
-  const { data, error } = await supabase.from('profiles').select('*').eq('role', 'teacher').eq('status', 'pending').order('created_at', { ascending: false });
-  if (!error) STATE.pendingTeachers = data || [];
+  STATE.pendingTeachers = await sbSelect('profiles', q => q.eq('role', 'teacher').eq('status', 'pending').order('created_at', { ascending: false }));
 }
+
 async function loadAllTeachers() {
-  const { data, error } = await supabase.from('profiles').select('*').eq('role', 'teacher').in('status', ['approved', 'pending', 'rejected']).order('full_name');
-  if (!error) STATE.teachers = data || [];
+  STATE.teachers = await sbSelect('profiles', q => q.eq('role', 'teacher').in('status', ['approved', 'pending', 'rejected']).order('full_name'));
 }
+
 async function loadAllRequests() {
-  const { data, error } = await supabase.from('teacher_requests').select('*, profiles!teacher_requests_teacher_id_fkey(full_name,school_name)').order('created_at', { ascending: false });
-  if (!error) STATE.requests = data || [];
+  const { data, error } = await supabase.from('teacher_requests').select('*, teacher:profiles!teacher_requests_teacher_id_fkey(full_name,school_name)').order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    STATE.requests = [];
+    return;
+  }
+  STATE.requests = data || [];
 }
+
 async function loadMyRequests() {
-  const { data, error } = await supabase.from('teacher_requests').select('*').order('created_at', { ascending: false });
-  if (!error) STATE.requests = data || [];
+  STATE.requests = await sbSelect('teacher_requests', q => q.order('created_at', { ascending: false }));
 }
+
 async function loadAllVisits() {
   const { data, error } = await supabase.from('inspection_visits').select('*, teacher:profiles!inspection_visits_teacher_id_fkey(full_name,school_name)').order('visit_date', { ascending: false });
-  if (!error) STATE.visits = data || [];
+  if (error) {
+    console.error(error);
+    STATE.visits = [];
+    return;
+  }
+  STATE.visits = data || [];
 }
+
 async function loadMyVisits() {
-  const { data, error } = await supabase.from('inspection_visits').select('*').order('visit_date', { ascending: false });
-  if (!error) STATE.visits = data || [];
+  STATE.visits = await sbSelect('inspection_visits', q => q.order('visit_date', { ascending: false }));
 }
+
 async function loadAllReports() {
-  const { data, error } = await supabase.from('visit_reports').select('*, teacher:profiles!visit_reports_teacher_id_fkey(full_name,school_name)').order('created_at', { ascending: false });
-  if (!error) STATE.reports = data || [];
+  const { data, error } = await supabase.from('visit_reports').select('*, teacher:profiles!visit_reports_teacher_id_fkey(full_name,school_name,som,directorate)').order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    STATE.reports = [];
+    return;
+  }
+  STATE.reports = data || [];
 }
+
 async function loadMyReports() {
-  const { data, error } = await supabase.from('visit_reports').select('*').order('created_at', { ascending: false });
-  if (!error) STATE.reports = data || [];
+  STATE.reports = await sbSelect('visit_reports', q => q.order('created_at', { ascending: false }));
 }
+
 async function loadAllScores() {
-  const { data, error } = await supabase.from('performance_scores').select('*').order('created_at', { ascending: false });
-  if (!error) STATE.scores = data || [];
+  STATE.scores = await sbSelect('performance_scores', q => q.order('created_at', { ascending: false }));
 }
+
 async function loadMyScores() {
-  const { data, error } = await supabase.from('performance_scores').select('*').order('created_at', { ascending: false });
-  if (!error) STATE.scores = data || [];
+  STATE.scores = await sbSelect('performance_scores', q => q.order('created_at', { ascending: false }));
 }
 
 function renderInspectorOverview() {
@@ -290,13 +404,13 @@ function renderInspectorOverview() {
   const reportsCount = STATE.reports.length;
   const pendingReqs = STATE.requests.filter(r => r.status === 'pending').length + STATE.pendingTeachers.length;
   const scheduledVisits = STATE.visits.filter(v => v.status === 'scheduled').length;
+
   qsa('#tab-overview .stat-num').forEach((el, idx) => {
     const values = [approvedTeachers, reportsCount, pendingReqs, scheduledVisits];
     el.dataset.target = values[idx] || 0;
     el.textContent = values[idx] || 0;
   });
 
-  // inject approvals block into overview if missing
   let approvals = qs('#inspector-approvals-overview');
   if (!approvals) {
     approvals = document.createElement('div');
@@ -305,21 +419,22 @@ function renderInspectorOverview() {
     approvals.style.marginBottom = '24px';
     qs('#tab-overview .activity-card')?.before(approvals);
   }
+
   approvals.innerHTML = `
     <div class="card-header">
       <h3 class="card-title">طلبات الانضمام الجديدة</h3>
       <button class="btn-text" onclick="inspectorTab('tickets', document.querySelector('#inspector-sidebar .nav-item:nth-child(2)'))">الانتقال إلى الطلبات ←</button>
     </div>
-    ${STATE.pendingTeachers.length ? `<div class="approvals-grid">${STATE.pendingTeachers.slice(0,4).map(renderApprovalCard).join('')}</div>` : `<div class="empty-state">لا توجد طلبات انضمام معلقة حالياً.</div>`}
+    ${STATE.pendingTeachers.length ? `<div class="approvals-grid">${STATE.pendingTeachers.slice(0, 4).map(renderApprovalCard).join('')}</div>` : `<div class="empty-state">لا توجد طلبات انضمام معلقة حالياً.</div>`}
   `;
 
-  // update recent activity to reflect real data
   const activity = qs('#tab-overview .activity-list');
   if (activity) {
     const merged = [
       ...STATE.pendingTeachers.slice(0, 2).map(t => ({ icon: t.full_name?.[0] || 'ج', name: t.full_name, school: t.school_name || '—', desc: 'طلب انضمام جديد إلى المنصة', badge: 'طلب انضمام', cls: 'badge-admin', time: formatDate(t.created_at) })),
-      ...STATE.requests.slice(0, 3).map(r => ({ icon: (r.profiles?.full_name || r.teacher?.full_name || 'ط')[0], name: r.profiles?.full_name || r.teacher?.full_name || 'أستاذ', school: r.profiles?.school_name || r.teacher?.school_name || '—', desc: r.subject, badge: REQUEST_TYPE_MAP[r.request_type]?.label || r.request_type, cls: REQUEST_TYPE_MAP[r.request_type]?.badge || 'badge-report', time: formatDate(r.created_at) }))
-    ].slice(0,5);
+      ...STATE.requests.slice(0, 3).map(r => ({ icon: (r.teacher?.full_name || 'ط')[0], name: r.teacher?.full_name || 'أستاذ', school: r.teacher?.school_name || '—', desc: r.subject, badge: REQUEST_TYPE_MAP[r.request_type]?.label || r.request_type, cls: REQUEST_TYPE_MAP[r.request_type]?.badge || 'badge-report', time: formatDate(r.created_at) }))
+    ].slice(0, 5);
+
     activity.innerHTML = merged.length ? merged.map(item => `
       <div class="activity-row">
         <div class="activity-avatar">${escapeHtml(item.icon)}</div>
@@ -355,6 +470,7 @@ function renderInspectorTickets() {
   const body = qs('#tickets-body');
   if (!body) return;
   const rows = [];
+
   rows.push(...STATE.pendingTeachers.map(t => `
     <tr data-status="pending">
       <td><div class="table-user"><div class="table-avatar">${escapeHtml((t.full_name || 'ج').charAt(0))}</div><span>${escapeHtml(t.full_name || 'طلب انضمام')}</span></div></td>
@@ -364,22 +480,24 @@ function renderInspectorTickets() {
       <td><span class="status-badge status-pending">معلق</span></td>
       <td><button class="btn-action" onclick="openApprovalModal('${t.id}')">معالجة</button></td>
     </tr>`));
+
   rows.push(...STATE.requests.map(r => `
     <tr data-status="${escapeHtml(r.status)}">
-      <td><div class="table-user"><div class="table-avatar">${escapeHtml((r.profiles?.full_name || r.teacher?.full_name || 'أ')[0])}</div><span>${escapeHtml(r.profiles?.full_name || r.teacher?.full_name || 'أستاذ')}</span></div></td>
+      <td><div class="table-user"><div class="table-avatar">${escapeHtml((r.teacher?.full_name || 'أ')[0])}</div><span>${escapeHtml(r.teacher?.full_name || 'أستاذ')}</span></div></td>
       <td><span class="ticket-badge ${REQUEST_TYPE_MAP[r.request_type]?.badge || 'badge-report'}">${escapeHtml(REQUEST_TYPE_MAP[r.request_type]?.label || r.request_type)}</span></td>
-      <td>${escapeHtml(r.profiles?.school_name || r.teacher?.school_name || '—')}</td>
+      <td>${escapeHtml(r.teacher?.school_name || '—')}</td>
       <td>${escapeHtml(formatDate(r.created_at))}</td>
       <td><span class="status-badge ${statusClass(r.status)}">${escapeHtml(statusLabel(r.status))}</span></td>
       <td><button class="btn-action" onclick="openRequestModal('${r.id}')">معالجة</button></td>
     </tr>`));
+
   body.innerHTML = rows.length ? rows.join('') : `<tr><td colspan="6"><div class="empty-state">لا توجد طلبات.</div></td></tr>`;
 
   const btns = qsa('.filter-btn');
   if (btns[0]) btns[0].textContent = `الكل (${rows.length})`;
   if (btns[1]) btns[1].textContent = `معلق (${STATE.pendingTeachers.length + STATE.requests.filter(r => r.status === 'pending').length})`;
   if (btns[2]) btns[2].textContent = `قيد المعالجة (${STATE.requests.filter(r => r.status === 'in_progress').length})`;
-  if (btns[3]) btns[3].textContent = `مغلق (${STATE.requests.filter(r => ['closed','rejected'].includes(r.status)).length})`;
+  if (btns[3]) btns[3].textContent = `مغلق (${STATE.requests.filter(r => ['closed', 'rejected'].includes(r.status)).length})`;
 }
 
 function renderInspectorReports() {
@@ -387,8 +505,10 @@ function renderInspectorReports() {
   if (summaryNums[0]) summaryNums[0].textContent = STATE.reports.length;
   if (summaryNums[1]) summaryNums[1].textContent = STATE.reports.filter(r => !r.official_number).length;
   if (summaryNums[2]) summaryNums[2].textContent = Math.max(STATE.teachers.filter(t => t.status === 'approved').length - STATE.reports.length, 0);
+
   const grid = qs('#tab-reports .reports-grid');
   if (!grid) return;
+
   grid.innerHTML = STATE.reports.length ? STATE.reports.map(r => `
     <div class="report-row-card submitted">
       <div class="rcard-avatar">${escapeHtml((r.teacher?.full_name || 'أ')[0])}</div>
@@ -409,6 +529,7 @@ function renderTeachersGrid(filter = '') {
   if (!grid) return;
   const f = filter.trim();
   const teachers = STATE.teachers.filter(t => (t.full_name || '').includes(f) || (t.school_name || '').includes(f) || (t.som || '').includes(f));
+
   grid.innerHTML = teachers.length ? teachers.map(t => {
     const relatedScore = STATE.scores.find(s => s.teacher_id === t.id);
     const latestVisit = STATE.visits.find(v => v.teacher_id === t.id);
@@ -439,11 +560,11 @@ function renderTeachersGrid(filter = '') {
     visitsSection.id = 'teachers-visits-section';
     visitsSection.className = 'section-card';
     visitsSection.style.marginTop = '20px';
-    grid.parentElement.appendChild(visitsSection);
+    grid.parentElement?.appendChild(visitsSection);
   }
   visitsSection.innerHTML = `
     <div class="card-header"><h3 class="card-title">الزيارات المجدولة والمنجزة</h3></div>
-    ${STATE.visits.length ? `<div class="visits-grid">${STATE.visits.slice(0,8).map(v => renderVisitCard(v, true)).join('')}</div>` : `<div class="empty-state">لا توجد زيارات بعد.</div>`}
+    ${STATE.visits.length ? `<div class="visits-grid">${STATE.visits.slice(0, 8).map(v => renderVisitCard(v, true)).join('')}</div>` : `<div class="empty-state">لا توجد زيارات بعد.</div>`}
   `;
 }
 
@@ -464,20 +585,22 @@ function renderVisitCard(v, inspectorMode = false) {
 function renderTeacherOverview() {
   const cards = qsa('#tab-t-overview .tsummary-num');
   const submittedReports = STATE.reports.length;
-  const openRequests = STATE.requests.filter(r => ['pending','in_progress'].includes(r.status)).length;
-  const upcomingVisits = STATE.visits.filter(v => ['scheduled','follow_up_required'].includes(v.status)).length;
+  const openRequests = STATE.requests.filter(r => ['pending', 'in_progress'].includes(r.status)).length;
+  const upcomingVisits = STATE.visits.filter(v => ['scheduled', 'follow_up_required'].includes(v.status)).length;
   const latestScore = STATE.scores[0]?.overall_score ?? 0;
   const vals = [submittedReports, openRequests, upcomingVisits, `${Number(latestScore).toFixed(0)}%`];
   cards.forEach((c, i) => { if (vals[i] !== undefined) c.textContent = vals[i]; });
 
   const reqList = qs('#tab-t-overview .my-requests-list');
-  reqList.innerHTML = STATE.requests.length ? STATE.requests.slice(0,5).map(r => `
-    <div class="mreq-item">
-      <div class="mreq-type"><span class="ticket-badge ${REQUEST_TYPE_MAP[r.request_type]?.badge || 'badge-report'}">${escapeHtml(REQUEST_TYPE_MAP[r.request_type]?.label || r.request_type)}</span></div>
-      <div class="mreq-desc">${escapeHtml(r.subject)}</div>
-      <div class="mreq-date">${escapeHtml(formatDate(r.created_at))}</div>
-      <div><span class="status-badge ${statusClass(r.status)}">${escapeHtml(statusLabel(r.status))}</span></div>
-    </div>`).join('') : `<div class="empty-state">لا توجد طلبات مرسلة بعد.</div>`;
+  if (reqList) {
+    reqList.innerHTML = STATE.requests.length ? STATE.requests.slice(0, 5).map(r => `
+      <div class="mreq-item">
+        <div class="mreq-type"><span class="ticket-badge ${REQUEST_TYPE_MAP[r.request_type]?.badge || 'badge-report'}">${escapeHtml(REQUEST_TYPE_MAP[r.request_type]?.label || r.request_type)}</span></div>
+        <div class="mreq-desc">${escapeHtml(r.subject)}</div>
+        <div class="mreq-date">${escapeHtml(formatDate(r.created_at))}</div>
+        <div><span class="status-badge ${statusClass(r.status)}">${escapeHtml(statusLabel(r.status))}</span></div>
+      </div>`).join('') : `<div class="empty-state">لا توجد طلبات مرسلة بعد.</div>`;
+  }
 
   let scoreSection = qs('#teacher-score-section');
   if (!scoreSection) {
@@ -485,8 +608,9 @@ function renderTeacherOverview() {
     scoreSection.id = 'teacher-score-section';
     scoreSection.className = 'section-card';
     scoreSection.style.marginTop = '20px';
-    qs('#tab-t-overview .my-requests-section').after(scoreSection);
+    qs('#tab-t-overview .my-requests-section')?.after(scoreSection);
   }
+
   const score = Number(latestScore || 0);
   const [label, cls] = scoreBadge(score);
   const latest = STATE.scores[0];
@@ -514,7 +638,7 @@ function renderTeacherOverview() {
   }
   visitsSection.innerHTML = `
     <div class="card-header"><h3 class="card-title">زياراتي</h3></div>
-    ${STATE.visits.length ? `<div class="visits-grid">${STATE.visits.slice(0,6).map(v => renderVisitCard(v, false)).join('')}</div>` : `<div class="empty-state">لا توجد زيارات مسجلة حتى الآن.</div>`}
+    ${STATE.visits.length ? `<div class="visits-grid">${STATE.visits.slice(0, 6).map(v => renderVisitCard(v, false)).join('')}</div>` : `<div class="empty-state">لا توجد زيارات مسجلة حتى الآن.</div>`}
   `;
 }
 
@@ -523,7 +647,7 @@ function renderTeacherReports() {
   if (!list) return;
   list.innerHTML = STATE.reports.length ? STATE.reports.map(r => {
     const avg = [r.planning_score, r.class_management_score, r.didactics_score, r.assessment_score].filter(v => typeof v === 'number');
-    const mean = avg.length ? (avg.reduce((a,b)=>a+b,0) / avg.length) : 0;
+    const mean = avg.length ? (avg.reduce((a, b) => a + b, 0) / avg.length) : 0;
     return `
       <div class="treport-card approved">
         <div class="treport-icon">📄</div>
@@ -540,10 +664,11 @@ function renderTeacherReports() {
   }).join('') : `<div class="empty-state">لا توجد تقارير زيارة بعد.</div>`;
 }
 
-function filterTeachers(val) { renderTeachersGrid(val); }
+function filterTeachers(val) { renderTeachersGrid(val || ''); }
+
 function filterTickets(status, btn) {
   qsa('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  btn?.classList.add('active');
   qsa('#tickets-body tr[data-status]').forEach(row => {
     row.style.display = status === 'all' || row.dataset.status === status ? '' : 'none';
   });
@@ -551,19 +676,21 @@ function filterTickets(status, btn) {
 
 function selectRequestType(card, type) {
   qsa('.rtype-card').forEach(c => c.classList.remove('active'));
-  card.classList.add('active');
+  card?.classList.add('active');
   STATE.selectedRequestType = type;
 }
 
 async function submitRequest() {
-  const subject = qs('#req-title').value.trim();
-  const preferred_date = qs('#req-date').value;
-  const message = qs('#req-desc').value.trim();
-  if (!subject || !preferred_date || !message) {
+  if (!requireSupabase()) return;
+  const subject = qs('#req-title')?.value.trim();
+  const preferred_date = qs('#req-date')?.value;
+  const message = qs('#req-desc')?.value.trim();
+  if (!subject || !preferred_date || !message || !STATE.profile?.id) {
     showToast('يرجى ملء جميع الحقول الإلزامية.');
     return;
   }
-  const request_type = ({ visit:'visit', accomp:'accompaniment', admin:'administrative', complaint:'complaint' })[STATE.selectedRequestType] || 'visit';
+
+  const request_type = ({ visit: 'visit', accomp: 'accompaniment', admin: 'administrative', complaint: 'complaint' })[STATE.selectedRequestType] || 'visit';
   const { error } = await supabase.from('teacher_requests').insert([{
     teacher_id: STATE.profile.id,
     request_type,
@@ -572,10 +699,12 @@ async function submitRequest() {
     preferred_date,
     status: 'pending'
   }]);
+
   if (error) {
-    showToast('❌ ' + error.message);
+    showToast('❌ ' + error.message, true);
     return;
   }
+
   showToast('✅ تم إرسال الطلب بنجاح.');
   resetForm();
   await loadMyRequests();
@@ -584,18 +713,22 @@ async function submitRequest() {
 }
 
 function resetForm() {
-  ['req-title', 'req-date', 'req-subject', 'req-unit', 'req-desc', 'req-notes'].forEach(id => { const el = qs(`#${id}`); if (el) el.value = ''; });
+  ['req-title', 'req-date', 'req-subject', 'req-unit', 'req-desc', 'req-notes'].forEach(id => {
+    const el = qs(`#${id}`);
+    if (el) el.value = '';
+  });
   const firstCard = qs('.rtype-card');
   if (firstCard) selectRequestType(firstCard, 'visit');
 }
 
 function openAppModal({ title, body, footer = '' }) {
-  qs('#app-modal-title').innerHTML = title;
-  qs('#app-modal-body').innerHTML = body;
-  qs('#app-modal-footer').innerHTML = footer;
-  qs('#app-modal').classList.add('open');
+  setHtml('#app-modal-title', title);
+  setHtml('#app-modal-body', body);
+  setHtml('#app-modal-footer', footer);
+  qs('#app-modal')?.classList.add('open');
 }
-function closeAppModal() { qs('#app-modal').classList.remove('open'); }
+
+function closeAppModal() { qs('#app-modal')?.classList.remove('open'); }
 
 function openApprovalModal(teacherId) {
   const t = STATE.pendingTeachers.find(x => x.id === teacherId);
@@ -620,7 +753,7 @@ function openRequestModal(requestId) {
     title: 'معالجة الطلب',
     body: `
       <div class="kv-list">
-        <div class="kv-row"><div class="kv-key">الأستاذ</div><div class="kv-val">${escapeHtml(r.profiles?.full_name || r.teacher?.full_name || '—')}</div></div>
+        <div class="kv-row"><div class="kv-key">الأستاذ</div><div class="kv-val">${escapeHtml(r.teacher?.full_name || '—')}</div></div>
         <div class="kv-row"><div class="kv-key">النوع</div><div class="kv-val">${escapeHtml(REQUEST_TYPE_MAP[r.request_type]?.label || r.request_type)}</div></div>
         <div class="kv-row"><div class="kv-key">الموضوع</div><div class="kv-val">${escapeHtml(r.subject)}</div></div>
         <div class="kv-row"><div class="kv-key">الوصف</div><div class="kv-val">${escapeHtml(r.message)}</div></div>
@@ -637,10 +770,11 @@ function openRequestModal(requestId) {
 }
 
 async function updateRequestStatus(requestId, status) {
+  if (!requireSupabase()) return;
   const inspector_reply = qs('#modal-reply')?.value.trim() || null;
   const { error } = await supabase.from('teacher_requests').update({ status, inspector_reply }).eq('id', requestId);
   if (error) {
-    showToast('❌ ' + error.message);
+    showToast('❌ ' + error.message, true);
     return;
   }
   closeAppModal();
@@ -650,8 +784,9 @@ async function updateRequestStatus(requestId, status) {
 }
 
 async function approveTeacher(teacherId) {
+  if (!requireSupabase()) return;
   const { error } = await supabase.from('profiles').update({ status: 'approved' }).eq('id', teacherId);
-  if (error) { showToast('❌ ' + error.message); return; }
+  if (error) { showToast('❌ ' + error.message, true); return; }
   closeAppModal();
   await Promise.all([loadPendingTeachers(), loadAllTeachers()]);
   renderInspectorOverview();
@@ -659,9 +794,11 @@ async function approveTeacher(teacherId) {
   renderTeachersGrid();
   showToast('✅ تم قبول الأستاذ.');
 }
+
 async function rejectTeacher(teacherId) {
+  if (!requireSupabase()) return;
   const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', teacherId);
-  if (error) { showToast('❌ ' + error.message); return; }
+  if (error) { showToast('❌ ' + error.message, true); return; }
   closeAppModal();
   await Promise.all([loadPendingTeachers(), loadAllTeachers()]);
   renderInspectorOverview();
@@ -693,20 +830,22 @@ function openVisitModal(teacherId) {
 }
 
 async function createVisit(teacherId) {
+  if (!requireSupabase()) return;
+  if (!STATE.profile?.id) return;
   const payload = {
     teacher_id: teacherId,
     inspector_id: STATE.profile.id,
-    visit_type: qs('#visit-type').value,
-    visit_date: qs('#visit-date').value,
-    subject: qs('#visit-subject').value.trim() || null,
-    level: qs('#visit-level').value.trim() || null,
-    lesson_title: qs('#visit-lesson').value.trim() || null,
-    notes: qs('#visit-notes').value.trim() || null,
+    visit_type: qs('#visit-type')?.value,
+    visit_date: qs('#visit-date')?.value,
+    subject: qs('#visit-subject')?.value.trim() || null,
+    level: qs('#visit-level')?.value.trim() || null,
+    lesson_title: qs('#visit-lesson')?.value.trim() || null,
+    notes: qs('#visit-notes')?.value.trim() || null,
     status: 'scheduled'
   };
   if (!payload.visit_date) { showToast('حدد تاريخ الزيارة.'); return; }
   const { error } = await supabase.from('inspection_visits').insert([payload]);
-  if (error) { showToast('❌ ' + error.message); return; }
+  if (error) { showToast('❌ ' + error.message, true); return; }
   closeAppModal();
   await loadAllVisits();
   renderInspectorOverview();
@@ -729,9 +868,12 @@ function openReportModal(visitId) {
         <div class="form-group"><label class="form-label">التدبير الصفي</label><input id="rep-class" class="form-input" type="number" min="0" max="100" value="80"></div>
         <div class="form-group"><label class="form-label">الديداكتيك</label><input id="rep-did" class="form-input" type="number" min="0" max="100" value="80"></div>
       </div>
-      <div class="form-group full"><label class="form-label">التقويم</label><input id="rep-assess" class="form-input" type="number" min="0" max="100" value="80"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">التقويم</label><input id="rep-assess" class="form-input" type="number" min="0" max="100" value="80"></div>
+        <div class="form-group"></div>
+      </div>
       <div class="form-group full"><label class="form-label">نقط القوة</label><textarea id="rep-strengths" class="form-textarea" rows="3"></textarea></div>
-      <div class="form-group full"><label class="form-label">ملاحظات</label><textarea id="rep-observations" class="form-textarea" rows="3"></textarea></div>
+      <div class="form-group full"><label class="form-label">الملاحظات</label><textarea id="rep-observations" class="form-textarea" rows="3"></textarea></div>
       <div class="form-group full"><label class="form-label">التوصيات</label><textarea id="rep-recommendations" class="form-textarea" rows="3"></textarea></div>
       <div class="form-group full"><label class="form-label">إجراءات التتبع</label><textarea id="rep-follow" class="form-textarea" rows="3"></textarea></div>
     `,
@@ -740,24 +882,25 @@ function openReportModal(visitId) {
 }
 
 async function createVisitReport(visitId) {
+  if (!requireSupabase()) return;
   const visit = STATE.visits.find(v => v.id === visitId);
-  if (!visit) return;
+  if (!visit || !STATE.profile?.id) return;
   const payload = {
     visit_id: visit.id,
     teacher_id: visit.teacher_id,
     inspector_id: STATE.profile.id,
-    official_number: qs('#rep-number').value.trim() || `REP/${new Date().getFullYear()}/${Math.floor(Math.random()*900+100)}`,
-    planning_score: Number(qs('#rep-plan').value || 0),
-    class_management_score: Number(qs('#rep-class').value || 0),
-    didactics_score: Number(qs('#rep-did').value || 0),
-    assessment_score: Number(qs('#rep-assess').value || 0),
-    strengths: qs('#rep-strengths').value.trim() || null,
-    observations: qs('#rep-observations').value.trim() || null,
-    recommendations: qs('#rep-recommendations').value.trim() || null,
-    followup_actions: qs('#rep-follow').value.trim() || null,
+    official_number: qs('#rep-number')?.value.trim() || null,
+    planning_score: Number(qs('#rep-plan')?.value || 0),
+    class_management_score: Number(qs('#rep-class')?.value || 0),
+    didactics_score: Number(qs('#rep-did')?.value || 0),
+    assessment_score: Number(qs('#rep-assess')?.value || 0),
+    strengths: qs('#rep-strengths')?.value.trim() || null,
+    observations: qs('#rep-observations')?.value.trim() || null,
+    recommendations: qs('#rep-recommendations')?.value.trim() || null,
+    followup_actions: qs('#rep-follow')?.value.trim() || null,
   };
   const { error } = await supabase.from('visit_reports').insert([payload]);
-  if (error) { showToast('❌ ' + error.message); return; }
+  if (error) { showToast('❌ ' + error.message, true); return; }
   await supabase.from('inspection_visits').update({ status: 'report_written' }).eq('id', visit.id);
   closeAppModal();
   await Promise.all([loadAllVisits(), loadAllReports()]);
@@ -775,7 +918,7 @@ function openScoreModal(teacherId) {
     body: `
       <div class="pending-banner">${escapeHtml(teacher.full_name || 'أستاذ')}</div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">الفترة</label><input id="score-period" class="form-input" type="text" value="${new Date().getFullYear()}-${new Date().getMonth()+1}"></div>
+        <div class="form-group"><label class="form-label">الفترة</label><input id="score-period" class="form-input" type="text" value="${new Date().getFullYear()}-${new Date().getMonth() + 1}"></div>
         <div class="form-group"><label class="form-label">الالتزام بالتقارير</label><input id="score-reports" class="form-input" type="number" min="0" max="100" value="80"></div>
       </div>
       <div class="form-row">
@@ -789,16 +932,17 @@ function openScoreModal(teacherId) {
 }
 
 async function savePerformanceScore(teacherId) {
+  if (!requireSupabase()) return;
   const payload = {
     teacher_id: teacherId,
-    period_label: qs('#score-period').value.trim() || 'فترة غير محددة',
-    reports_commitment: Number(qs('#score-reports').value || 0),
-    responsiveness: Number(qs('#score-resp').value || 0),
-    inspection_progress: Number(qs('#score-progress').value || 0),
-    admin_completion: Number(qs('#score-admin').value || 0),
+    period_label: qs('#score-period')?.value.trim() || 'فترة غير محددة',
+    reports_commitment: Number(qs('#score-reports')?.value || 0),
+    responsiveness: Number(qs('#score-resp')?.value || 0),
+    inspection_progress: Number(qs('#score-progress')?.value || 0),
+    admin_completion: Number(qs('#score-admin')?.value || 0),
   };
   const { error } = await supabase.from('performance_scores').insert([payload]);
-  if (error) { showToast('❌ ' + error.message); return; }
+  if (error) { showToast('❌ ' + error.message, true); return; }
   closeAppModal();
   await loadAllScores();
   renderTeachersGrid();
@@ -806,14 +950,31 @@ async function savePerformanceScore(teacherId) {
 }
 
 async function printVisitReport(reportId) {
-  const report = STATE.reports.find(r => r.id === reportId) || (await supabase.from('visit_reports').select('*').eq('id', reportId).single()).data;
-  if (!report) return;
-  const visit = STATE.visits.find(v => v.id === report.visit_id) || (await supabase.from('inspection_visits').select('*').eq('id', report.visit_id).single()).data;
-  const teacher = STATE.teachers.find(t => t.id === report.teacher_id) || STATE.profile;
+  if (!requireSupabase()) return;
+  let report = STATE.reports.find(r => r.id === reportId);
+  if (!report) {
+    const { data, error } = await supabase.from('visit_reports').select('*').eq('id', reportId).maybeSingle();
+    if (error || !data) return;
+    report = data;
+  }
+
+  let visit = STATE.visits.find(v => v.id === report.visit_id);
+  if (!visit) {
+    const { data, error } = await supabase.from('inspection_visits').select('*').eq('id', report.visit_id).maybeSingle();
+    if (!error) visit = data;
+  }
+
+  let teacher = STATE.teachers.find(t => t.id === report.teacher_id) || report.teacher || null;
+  if (!teacher) {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', report.teacher_id).maybeSingle();
+    if (!error) teacher = data;
+  }
+
   const w = window.open('', '_blank', 'width=1100,height=900');
+  if (!w) return;
   const avg = [report.planning_score, report.class_management_score, report.didactics_score, report.assessment_score].filter(v => typeof v === 'number');
-  const mean = avg.length ? (avg.reduce((a,b)=>a+b,0)/avg.length).toFixed(0) : '—';
-  w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير رسمي</title><style>body{font-family:Tajawal,Arial,sans-serif;direction:rtl;margin:0;padding:0;color:#111827} .wrap{padding:28px} .head{text-align:center;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}.block{margin-bottom:16px}.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #d1d5db;padding:8px}.footer{display:flex;justify-content:space-between;margin-top:42px}.muted{color:#6b7280}@media print{@page{size:A4;margin:12mm}}</style></head><body><div class="wrap"><div class="head"><div>المملكة المغربية</div><div>وزارة التربية الوطنية والتعليم الأولي والرياضة</div><h2>تقرير زيارة تربوية رسمي</h2><div class="muted">رقم التقرير: ${escapeHtml(report.official_number || '—')}</div></div><div class="grid"><div><strong>الأستاذ:</strong> ${escapeHtml(teacher?.full_name || '—')}</div><div><strong>رقم التأجير:</strong> ${escapeHtml(teacher?.som || '—')}</div><div><strong>المؤسسة:</strong> ${escapeHtml(teacher?.school_name || '—')}</div><div><strong>المديرية:</strong> ${escapeHtml(teacher?.directorate || '—')}</div><div><strong>نوع الزيارة:</strong> ${escapeHtml(VISIT_TYPE_MAP[visit?.visit_type] || visit?.visit_type || '—')}</div><div><strong>تاريخ الزيارة:</strong> ${escapeHtml(formatDate(visit?.visit_date))}</div><div><strong>المادة:</strong> ${escapeHtml(visit?.subject || '—')}</div><div><strong>المستوى:</strong> ${escapeHtml(visit?.level || '—')}</div><div><strong>عنوان الحصة:</strong> ${escapeHtml(visit?.lesson_title || '—')}</div><div><strong>المعدل العام:</strong> ${escapeHtml(mean)}/100</div></div><div class="block"><h4>شبكة التقويم</h4><table class="table"><tr><th>المحور</th><th>النقطة /100</th></tr><tr><td>التخطيط</td><td>${report.planning_score ?? '—'}</td></tr><tr><td>التدبير الصفي</td><td>${report.class_management_score ?? '—'}</td></tr><tr><td>الديداكتيك</td><td>${report.didactics_score ?? '—'}</td></tr><tr><td>التقويم</td><td>${report.assessment_score ?? '—'}</td></tr></table></div><div class="block"><h4>نقط القوة</h4><div>${escapeHtml(report.strengths || '—')}</div></div><div class="block"><h4>الملاحظات</h4><div>${escapeHtml(report.observations || '—')}</div></div><div class="block"><h4>التوصيات</h4><div>${escapeHtml(report.recommendations || '—')}</div></div><div class="block"><h4>إجراءات التتبع</h4><div>${escapeHtml(report.followup_actions || '—')}</div></div><div class="footer"><div>توقيع المفتش: __________________</div><div>اطلاع الأستاذ: __________________</div></div></div><script>window.onload=()=>window.print()</script></body></html>`);
+  const mean = avg.length ? (avg.reduce((a, b) => a + b, 0) / avg.length).toFixed(0) : '—';
+  w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير رسمي</title><style>body{font-family:Tajawal,Arial,sans-serif;direction:rtl;margin:0;padding:0;color:#111827} .wrap{padding:28px} .head{text-align:center;border-bottom:2px solid #111827;padding-bottom:12px;margin-bottom:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}.block{margin-bottom:16px}.table{width:100%;border-collapse:collapse}.table th,.table td{border:1px solid #d1d5db;padding:8px}.footer{display:flex;justify-content:space-between;margin-top:42px}.muted{color:#6b7280}@media print{@page{size:A4;margin:12mm}}</style></head><body><div class="wrap"><div class="head"><div>المملكة المغربية</div><div>وزارة التربية الوطنية والتعليم الأولي والرياضة</div><h2>تقرير زيارة تربوية رسمي</h2><div class="muted">رقم التقرير: ${escapeHtml(report.official_number || '—')}</div></div><div class="grid"><div><strong>الأستاذ:</strong> ${escapeHtml(teacher?.full_name || '—')}</div><div><strong>رقم التأجير:</strong> ${escapeHtml(teacher?.som || '—')}</div><div><strong>المؤسسة:</strong> ${escapeHtml(teacher?.school_name || '—')}</div><div><strong>المديرية:</strong> ${escapeHtml(teacher?.directorate || '—')}</div><div><strong>نوع الزيارة:</strong> ${escapeHtml(VISIT_TYPE_MAP[visit?.visit_type] || visit?.visit_type || '—')}</div><div><strong>تاريخ الزيارة:</strong> ${escapeHtml(formatDate(visit?.visit_date))}</div><div><strong>المادة:</strong> ${escapeHtml(visit?.subject || '—')}</div><div><strong>المستوى:</strong> ${escapeHtml(visit?.level || '—')}</div><div><strong>عنوان الحصة:</strong> ${escapeHtml(visit?.lesson_title || '—')}</div><div><strong>المعدل العام:</strong> ${escapeHtml(mean)}/100</div></div><div class="block"><h4>شبكة التقويم</h4><table class="table"><tr><th>المحور</th><th>النقطة /100</th></tr><tr><td>التخطيط</td><td>${report.planning_score ?? '—'}</td></tr><tr><td>التدبير الصفي</td><td>${report.class_management_score ?? '—'}</td></tr><tr><td>الديداكتيك</td><td>${report.didactics_score ?? '—'}</td></tr><tr><td>التقويم</td><td>${report.assessment_score ?? '—'}</td></tr></table></div><div class="block"><h4>نقط القوة</h4><div>${escapeHtml(report.strengths || '—')}</div></div><div class="block"><h4>الملاحظات</h4><div>${escapeHtml(report.observations || '—')}</div></div><div class="block"><h4>التوصيات</h4><div>${escapeHtml(report.recommendations || '—')}</div></div><div class="block"><h4>إجراءات التتبع</h4><div>${escapeHtml(report.followup_actions || '—')}</div></div><div class="footer"><div>توقيع المفتش: __________________</div><div>اطلاع الأستاذ: __________________</div></div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
 }
 
@@ -836,8 +997,8 @@ function rejectTicket() {}
 
 function updateDateBadges() {
   const d = new Date().toLocaleDateString('ar-MA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  if (qs('#current-date-1')) qs('#current-date-1').textContent = `📅 ${d}`;
-  if (qs('#current-date-2')) qs('#current-date-2').textContent = `📅 ${d}`;
+  setText('#current-date-1', `📅 ${d}`);
+  setText('#current-date-2', `📅 ${d}`);
 }
 
 function initPWA() {
@@ -851,6 +1012,7 @@ function initPWA() {
     btn.className = 'logout-btn install-btn';
     btn.title = 'تثبيت التطبيق';
     btn.innerHTML = '⬇';
+    btn.style.display = 'none';
     btn.onclick = async () => {
       if (!STATE.deferredPrompt) return;
       STATE.deferredPrompt.prompt();
