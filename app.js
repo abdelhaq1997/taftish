@@ -1544,6 +1544,35 @@ function cloudOn() { return !!CLOUD.ready; }
 function normEmail(v) { return String(v || '').trim().toLowerCase(); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function uniqueIdOrGen(v) { return v || genId(); }
+function makeInviteCode(seed = '') {
+  const base = String(seed || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4) || 'MORO';
+  return `${base}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+function getInspectorInviteCode() {
+  return APP?.inspector?.shareCode || APP?.inspector?.cardId || '';
+}
+async function cloudFindInspectorByShareCode(code) {
+  const clean = String(code || '').trim();
+  if (!clean) return null;
+  const { data, error } = await CLOUD.client.rpc('find_inspector_by_share_code', { p_code: clean });
+  if (error) throw error;
+  return Array.isArray(data) ? (data[0] || null) : data;
+}
+function copyShareInvite() {
+  const code = getInspectorInviteCode();
+  if (!code) {
+    showToast('⚠ لا يوجد رمز دعوة بعد');
+    return;
+  }
+  const text = `رابط المنظومة: ${location.href}
+رمز الدعوة: ${code}`;
+  navigator.clipboard?.writeText(text).then(() => {
+    showToast(`✅ تم نسخ رمز الدعوة: ${code}`);
+  }).catch(() => {
+    showToast(`رمز الدعوة: ${code}`);
+  });
+}
+let pendingTeacherProfile = null;
 
 async function cloudGetAuthUser() {
   if (!cloudOn()) return null;
@@ -1647,6 +1676,7 @@ function mapInspector(row) {
     id: row.id,
     name: row.full_name || row.name || '',
     cardId: row.card_id || row.cardId || '',
+    shareCode: row.share_code || row.shareCode || row.card_id || row.cardId || '',
     region: row.region || '',
     province: row.province || '',
     district: row.district || '',
@@ -1826,6 +1856,7 @@ async function cloudEnsureInspectorProfile(authUser, inspectorPayload) {
     id: authUser.id,
     full_name: inspectorPayload.name,
     card_id: inspectorPayload.cardId,
+    share_code: inspectorPayload.shareCode || inspectorPayload.cardId || makeInviteCode(inspectorPayload.name),
     region: inspectorPayload.region,
     province: inspectorPayload.province,
     district: inspectorPayload.district,
@@ -2017,6 +2048,7 @@ launchApp = async function launchAppSupabaseAware() {
     id: genId(),
     name: v('s-insp-name'),
     cardId: v('s-insp-id'),
+    shareCode: (v('s-insp-id') || makeInviteCode(v('s-insp-name'))).toUpperCase(),
     region: v('s-insp-region'),
     province: v('s-insp-province'),
     district: v('s-insp-district'),
@@ -2050,6 +2082,7 @@ launchApp = async function launchAppSupabaseAware() {
 
     insp.id = authUser.id;
     await cloudEnsureInspectorProfile(authUser, insp);
+    APP.inspector = { ...APP.inspector, ...insp };
 
     const createdTeachers = [];
     for (let i = 0; i < APP.teachers.length; i++) {
@@ -2088,7 +2121,25 @@ handleLogin = async function handleLoginSupabaseAware(e) {
       if (error) throw error;
       const user = await cloudGetAuthUser();
       const roleData = await cloudResolveRole(user?.id);
-      if (!roleData) throw new Error('لا يوجد ملف مرتبط بهذا الحساب داخل الجداول');
+      if (!roleData) {
+        const meta = user?.user_metadata || {};
+        if (meta?.role === 'teacher') {
+          pendingTeacherProfile = {
+            authUserId: user.id,
+            email,
+            name: meta.full_name || '',
+            inspectorId: meta.inspector_id || '',
+            shareCode: meta.share_code || '',
+          };
+          document.getElementById('cp-name').value = pendingTeacherProfile.name || '';
+          document.getElementById('cp-email').value = pendingTeacherProfile.email || '';
+          document.getElementById('cp-code').value = pendingTeacherProfile.shareCode || '';
+          openModal('modal-complete-teacher-profile');
+          showToast('ℹ أكمل ملفك لربط حسابك بالمفتش');
+          return;
+        }
+        throw new Error('لا يوجد ملف مرتبط بهذا الحساب داخل الجداول');
+      }
       APP.currentUser = { role: roleData.role, id: roleData.appId };
       save(KEYS.CURRENT_USER, APP.currentUser);
       await cloudHydrate(roleData);
@@ -2449,3 +2500,136 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 50);
   }
 });
+
+
+async function selfRegisterTeacher() {
+  const name = v('sr-name');
+  const email = normEmail(v('sr-email'));
+  const pass = v('sr-pass');
+  const school = v('sr-school');
+  const grade = v('sr-grade');
+  const subject = v('sr-subject');
+  const shareCode = String(v('sr-code') || '').trim().toUpperCase();
+
+  if (!name || !email || !pass || !school || !grade || !shareCode) {
+    showToast('⚠ يُرجى ملء الحقول الإلزامية');
+    return;
+  }
+  if (pass.length < 6) {
+    showToast('⚠ كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    return;
+  }
+  if (!cloudOn()) {
+    showToast('⚠ التسجيل الذاتي يحتاج تفعيل Supabase');
+    return;
+  }
+
+  try {
+    const inspector = await cloudFindInspectorByShareCode(shareCode);
+    if (!inspector?.id) throw new Error('invalid_invite_code');
+
+    const signed = await CLOUD.client.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: {
+          role: 'teacher',
+          full_name: name,
+          inspector_id: inspector.id,
+          share_code: shareCode,
+        }
+      }
+    });
+    if (signed.error) throw signed.error;
+
+    let authUser = signed.data?.user || null;
+    if (!signed.data?.session) {
+      const signedIn = await CLOUD.client.auth.signInWithPassword({ email, password: pass });
+      if (!signedIn.error) authUser = signedIn.data?.user || authUser;
+    }
+
+    if (!authUser?.id) {
+      closeModal('modal-self-register-teacher');
+      clearFields(['sr-name','sr-email','sr-pass','sr-school','sr-grade','sr-subject','sr-code']);
+      showToast('✅ تم إنشاء الحساب. أكّد بريدك ثم سجّل الدخول لإكمال الربط.');
+      return;
+    }
+
+    const teacher = await cloudInsertTeacherRow({
+      id: genId(),
+      name, email, school, grade, subject,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)]
+    }, inspector.id, authUser.id);
+
+    APP.currentUser = { role: 'teacher', id: teacher.id };
+    save(KEYS.CURRENT_USER, APP.currentUser);
+    await cloudHydrate({ role: 'teacher', appId: teacher.id, teacher });
+    closeModal('modal-self-register-teacher');
+    clearFields(['sr-name','sr-email','sr-pass','sr-school','sr-grade','sr-subject','sr-code']);
+    showToast('🎉 تم التسجيل والدخول بنجاح');
+    enterTeacher(teacher.id);
+  } catch (err) {
+    console.error(err);
+    const msg = String(err?.message || '');
+    if (msg.includes('User already registered')) {
+      showToast('⚠ هذا البريد مسجل من قبل. سجّل الدخول مباشرة أو أكمل ملفك.');
+    } else if (msg.includes('invalid_invite_code')) {
+      showToast('❌ رمز الدعوة غير صحيح');
+    } else {
+      showToast('❌ تعذر إتمام التسجيل');
+    }
+  }
+}
+
+async function completeTeacherProfile() {
+  const payload = pendingTeacherProfile || {};
+  const name = v('cp-name') || payload.name;
+  const email = normEmail(v('cp-email') || payload.email);
+  const school = v('cp-school');
+  const grade = v('cp-grade');
+  const subject = v('cp-subject');
+  const shareCode = String(v('cp-code') || payload.shareCode || '').trim().toUpperCase();
+
+  if (!name || !email || !school || !grade || !shareCode) {
+    showToast('⚠ يُرجى ملء الحقول الإلزامية');
+    return;
+  }
+  try {
+    const inspector = payload.inspectorId ? { id: payload.inspectorId } : await cloudFindInspectorByShareCode(shareCode);
+    if (!inspector?.id) throw new Error('invalid_invite_code');
+    const authUser = await cloudGetAuthUser();
+    if (!authUser?.id) throw new Error('no_auth_user');
+
+    let existing = await cloudFetchTeacherByAuthUserId(authUser.id);
+    if (!existing) existing = await cloudFetchTeacherByEmail(email);
+
+    let teacher;
+    if (existing?.id) {
+      teacher = await cloudUpdateTeacherRow({
+        ...existing,
+        name,
+        email,
+        school,
+        grade,
+        subject,
+      });
+    } else {
+      teacher = await cloudInsertTeacherRow({
+        id: genId(),
+        name, email, school, grade, subject,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)]
+      }, inspector.id, authUser.id);
+    }
+
+    pendingTeacherProfile = null;
+    APP.currentUser = { role: 'teacher', id: teacher.id };
+    save(KEYS.CURRENT_USER, APP.currentUser);
+    await cloudHydrate({ role: 'teacher', appId: teacher.id, teacher });
+    closeModal('modal-complete-teacher-profile');
+    showToast('✅ تم إكمال ملف الأستاذ');
+    enterTeacher(teacher.id);
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر إكمال الملف');
+  }
+}

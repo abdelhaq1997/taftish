@@ -1,3 +1,7 @@
+alter table public.inspectors add column if not exists share_code text;
+update public.inspectors set share_code = upper(coalesce(nullif(card_id,''), substr(md5(id::text),1,8))) where share_code is null;
+create unique index if not exists inspectors_share_code_idx on public.inspectors (share_code);
+
 -- منظومة التفتيش التربوي — Supabase patch
 -- شغّل هذا بعد الـ SQL الأولي الذي أرسلته لك سابقاً.
 
@@ -19,6 +23,21 @@ update public.visits   set inspector_id = owner_id where inspector_id is null an
 insert into storage.buckets (id, name, public)
 select 'reports', 'reports', true
 where not exists (select 1 from storage.buckets where id = 'reports');
+
+
+create or replace function public.find_inspector_by_share_code(p_code text)
+returns table (id uuid, full_name text, district text, share_code text)
+language sql
+security definer
+set search_path = public
+as $$
+  select i.id, i.full_name, i.district, i.share_code
+  from public.inspectors i
+  where upper(i.share_code) = upper(trim(p_code))
+  limit 1;
+$$;
+
+grant execute on function public.find_inspector_by_share_code(text) to anon, authenticated;
 
 -- حذف السياسات القديمة إن كانت موجودة
 DO $$
@@ -64,7 +83,7 @@ on public.teachers for select
     )
   );
 
-create policy "teachers_insert_inspector"
+create policy "teachers_insert_inspector_or_self"
 on public.teachers for insert
   to authenticated
   with check (
@@ -72,6 +91,7 @@ on public.teachers for insert
     and (
       (select auth.uid()) = inspector_id
       or (select auth.uid()) = owner_id
+      or (select auth.uid()) = auth_user_id
     )
   );
 

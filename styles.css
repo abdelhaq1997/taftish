@@ -986,3 +986,21 @@ body {
   .visit-item, .modal-ft-spread { flex-direction:column; align-items:flex-start; }
   .ph-actions-wrap { justify-content:flex-start; }
 }
+
+
+.footer-sep { color: var(--gray-400); margin: 0 6px; }
+.notice-box {
+  background: var(--blue-50);
+  border: 1px solid var(--blue-100);
+  color: var(--gray-700);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: .88rem;
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+.notice-box.soft {
+  background: var(--gray-50);
+  border-color: var(--gray-200);
+}
+#share-invite-btn { white-space: nowrap; }
