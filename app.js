@@ -1513,3 +1513,939 @@ function importData(ev) {
   };
   reader.readAsText(file, 'utf-8');
 }
+
+
+/* ══════════════════════════════════════════════════════════
+   Supabase Cloud Sync Layer
+   Keeps the same UI/UX while moving core data to Supabase.
+   Note: teacher password changes/deletion still need admin/server-side handling.
+══════════════════════════════════════════════════════════ */
+const SUPABASE_URL = 'https://lftlcepnsvvhoaopnqjf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmdGxjZXBuc3Z2aG9hb3BucWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NjA4OTIsImV4cCI6MjA5MDEzNjg5Mn0.bUUXG0DHhUcpeeogMKqM2LOiBvHmlbwO8ukB1qqnyQE';
+
+const CLOUD = {
+  enabled: !!(window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY),
+  client: null,
+  signupClient: null,
+  ready: false,
+};
+
+if (CLOUD.enabled) {
+  CLOUD.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+  CLOUD.signupClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+  CLOUD.ready = true;
+}
+
+function cloudOn() { return !!CLOUD.ready; }
+function normEmail(v) { return String(v || '').trim().toLowerCase(); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function uniqueIdOrGen(v) { return v || genId(); }
+
+async function cloudGetAuthUser() {
+  if (!cloudOn()) return null;
+  const { data, error } = await CLOUD.client.auth.getUser();
+  if (error) return null;
+  return data?.user || null;
+}
+
+async function cloudGetSession() {
+  if (!cloudOn()) return null;
+  const { data } = await CLOUD.client.auth.getSession();
+  return data?.session || null;
+}
+
+async function cloudSignOut() {
+  if (!cloudOn()) return;
+  try { await CLOUD.client.auth.signOut(); } catch {}
+}
+
+async function cloudRestoreRoute() {
+  if (!cloudOn()) return false;
+  const user = await cloudGetAuthUser();
+  if (!user) return false;
+  const roleData = await cloudResolveRole(user.id);
+  if (!roleData) return false;
+  APP.currentUser = { role: roleData.role, id: roleData.appId };
+  save(KEYS.CURRENT_USER, APP.currentUser);
+  await cloudHydrate(roleData);
+  roleData.role === 'inspector' ? enterInspector() : enterTeacher(roleData.appId);
+  return true;
+}
+
+async function cloudResolveRole(authUserId) {
+  if (!cloudOn() || !authUserId) return null;
+
+  let { data: inspector } = await CLOUD.client
+    .from('inspectors')
+    .select('*')
+    .eq('id', authUserId)
+    .maybeSingle();
+  if (inspector) {
+    return { role: 'inspector', appId: inspector.id, inspector, teacher: null };
+  }
+
+  let teacher = null;
+  let teacherErr = null;
+  ({ data: teacher, error: teacherErr } = await CLOUD.client
+    .from('teachers')
+    .select('*')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle());
+
+  if ((!teacher && teacherErr) || !teacher) {
+    ({ data: teacher } = await CLOUD.client
+      .from('teachers')
+      .select('*')
+      .eq('email', normEmail((await cloudGetAuthUser())?.email))
+      .maybeSingle());
+  }
+
+  if (teacher) {
+    return { role: 'teacher', appId: teacher.id, inspector: null, teacher };
+  }
+
+  return null;
+}
+
+async function cloudHydrate(roleData = null) {
+  if (!cloudOn()) return false;
+  const authUser = await cloudGetAuthUser();
+  if (!authUser) return false;
+  if (!roleData) roleData = await cloudResolveRole(authUser.id);
+  if (!roleData) return false;
+
+  if (roleData.role === 'inspector') {
+    const inspectorId = roleData.inspector?.id || authUser.id;
+    APP.inspector = mapInspector(roleData.inspector || (await cloudFetchInspector(inspectorId)) || null);
+    APP.teachers = await cloudFetchTeachersForInspector(inspectorId);
+    APP.tickets = await cloudFetchTicketsForInspector(inspectorId);
+    APP.reports = await cloudFetchReportsForInspector(inspectorId);
+    APP.visits = await cloudFetchVisitsForInspector(inspectorId);
+    saveAll();
+    return true;
+  }
+
+  const teacher = roleData.teacher || await cloudFetchTeacherByAuthUserId(authUser.id) || await cloudFetchTeacherByEmail(authUser.email);
+  if (!teacher) return false;
+  const inspector = teacher.inspector_id ? await cloudFetchInspector(teacher.inspector_id) : null;
+  APP.inspector = mapInspector(inspector);
+  APP.teachers = [mapTeacher(teacher)];
+  APP.tickets = await cloudFetchTicketsForTeacher(teacher.id);
+  APP.reports = await cloudFetchReportsForTeacher(teacher.id);
+  APP.visits = await cloudFetchVisitsForTeacher(teacher.id);
+  saveAll();
+  return true;
+}
+
+function mapInspector(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.full_name || row.name || '',
+    cardId: row.card_id || row.cardId || '',
+    region: row.region || '',
+    province: row.province || '',
+    district: row.district || '',
+    level: row.level || '',
+    email: row.email || '',
+    pass: '',
+    createdAt: row.created_at || '',
+  };
+}
+
+function mapTeacher(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    authUserId: row.auth_user_id || null,
+    inspectorId: row.inspector_id || row.owner_id || null,
+    ownerId: row.owner_id || row.inspector_id || null,
+    name: row.full_name || row.name || '',
+    email: row.email || '',
+    pass: '',
+    school: row.school || '',
+    grade: row.grade || '',
+    subject: row.subject || '',
+    color: row.color || COLORS[0],
+    createdAt: row.created_at || '',
+  };
+}
+
+function mapTicket(row) {
+  return {
+    id: row.id,
+    teacherId: row.teacher_id,
+    teacherName: row.teacher_name || '',
+    school: row.school || '',
+    type: row.type || 'visit',
+    title: row.title || '',
+    desc: row.description || row.desc || '',
+    subject: row.subject || '',
+    unit: row.unit || '',
+    notes: row.notes || '',
+    preferredDate: row.preferred_date || row.preferredDate || '',
+    status: row.status || 'pending',
+    inspectorNote: row.inspector_note || row.inspectorNote || '',
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    ownerId: row.owner_id || row.inspector_id || null,
+    inspectorId: row.inspector_id || row.owner_id || null,
+  };
+}
+
+function mapReport(row) {
+  return {
+    id: row.id,
+    teacherId: row.teacher_id,
+    teacherName: row.teacher_name || '',
+    school: row.school || '',
+    grade: row.grade || '',
+    title: row.title || '',
+    semester: row.semester || '',
+    subject: row.subject || '',
+    summary: row.summary || '',
+    fileName: row.file_name || row.fileName || '',
+    fileUrl: row.file_url || row.fileUrl || '',
+    fileSize: row.file_size || 0,
+    status: row.status || 'pending_review',
+    inspectorNote: row.inspector_note || '',
+    submittedAt: row.submitted_at || row.submittedAt || new Date().toISOString(),
+    ownerId: row.owner_id || row.inspector_id || null,
+    inspectorId: row.inspector_id || row.owner_id || null,
+  };
+}
+
+function mapVisit(row) {
+  return {
+    id: row.id,
+    ticketId: row.ticket_id,
+    teacherId: row.teacher_id,
+    date: row.visit_date || row.date || '',
+    status: row.status || 'scheduled',
+    createdAt: row.created_at || new Date().toISOString(),
+    ownerId: row.owner_id || row.inspector_id || null,
+    inspectorId: row.inspector_id || row.owner_id || null,
+  };
+}
+
+async function cloudFetchInspector(id) {
+  if (!id) return null;
+  const { data } = await CLOUD.client.from('inspectors').select('*').eq('id', id).maybeSingle();
+  return data || null;
+}
+
+async function cloudFetchTeacherByAuthUserId(authUserId) {
+  if (!authUserId) return null;
+  const { data } = await CLOUD.client.from('teachers').select('*').eq('auth_user_id', authUserId).maybeSingle();
+  return data || null;
+}
+
+async function cloudFetchTeacherByEmail(email) {
+  if (!email) return null;
+  const { data } = await CLOUD.client.from('teachers').select('*').eq('email', normEmail(email)).maybeSingle();
+  return data || null;
+}
+
+async function cloudFetchTeachersForInspector(inspectorId) {
+  let { data, error } = await CLOUD.client
+    .from('teachers')
+    .select('*')
+    .eq('inspector_id', inspectorId)
+    .order('created_at', { ascending: true });
+  if (error || !data) {
+    ({ data } = await CLOUD.client.from('teachers').select('*').eq('owner_id', inspectorId).order('created_at', { ascending: true }));
+  }
+  return (data || []).map(mapTeacher);
+}
+
+async function cloudFetchTicketsForInspector(inspectorId) {
+  let { data, error } = await CLOUD.client
+    .from('tickets')
+    .select('*')
+    .eq('inspector_id', inspectorId)
+    .order('created_at', { ascending: false });
+  if (error || !data) {
+    ({ data } = await CLOUD.client.from('tickets').select('*').eq('owner_id', inspectorId).order('created_at', { ascending: false }));
+  }
+  return (data || []).map(mapTicket);
+}
+
+async function cloudFetchReportsForInspector(inspectorId) {
+  let { data, error } = await CLOUD.client
+    .from('reports')
+    .select('*')
+    .eq('inspector_id', inspectorId)
+    .order('submitted_at', { ascending: false });
+  if (error || !data) {
+    ({ data } = await CLOUD.client.from('reports').select('*').eq('owner_id', inspectorId).order('submitted_at', { ascending: false }));
+  }
+  return (data || []).map(mapReport);
+}
+
+async function cloudFetchVisitsForInspector(inspectorId) {
+  let { data, error } = await CLOUD.client
+    .from('visits')
+    .select('*')
+    .eq('inspector_id', inspectorId)
+    .order('visit_date', { ascending: true });
+  if (error || !data) {
+    ({ data } = await CLOUD.client.from('visits').select('*').eq('owner_id', inspectorId).order('visit_date', { ascending: true }));
+  }
+  return (data || []).map(mapVisit);
+}
+
+async function cloudFetchTicketsForTeacher(teacherId) {
+  const { data } = await CLOUD.client.from('tickets').select('*').eq('teacher_id', teacherId).order('created_at', { ascending: false });
+  return (data || []).map(mapTicket);
+}
+async function cloudFetchReportsForTeacher(teacherId) {
+  const { data } = await CLOUD.client.from('reports').select('*').eq('teacher_id', teacherId).order('submitted_at', { ascending: false });
+  return (data || []).map(mapReport);
+}
+async function cloudFetchVisitsForTeacher(teacherId) {
+  const { data } = await CLOUD.client.from('visits').select('*').eq('teacher_id', teacherId).order('visit_date', { ascending: true });
+  return (data || []).map(mapVisit);
+}
+
+async function cloudSignUpUser(email, password, metadata = {}) {
+  const client = CLOUD.signupClient || CLOUD.client;
+  const { data, error } = await client.auth.signUp({
+    email: normEmail(email),
+    password,
+    options: { data: metadata }
+  });
+  if (error) throw error;
+  return data;
+}
+
+async function cloudEnsureInspectorProfile(authUser, inspectorPayload) {
+  const row = {
+    id: authUser.id,
+    full_name: inspectorPayload.name,
+    card_id: inspectorPayload.cardId,
+    region: inspectorPayload.region,
+    province: inspectorPayload.province,
+    district: inspectorPayload.district,
+    level: inspectorPayload.level,
+    email: inspectorPayload.email,
+  };
+  const { error } = await CLOUD.client.from('inspectors').upsert(row);
+  if (error) throw error;
+  return row;
+}
+
+async function cloudCreateTeacherAuth(teacher, inspectorId) {
+  const meta = { role: 'teacher', inspector_id: inspectorId, full_name: teacher.name };
+  const signed = await cloudSignUpUser(teacher.email, teacher.pass, meta);
+  return signed?.user || null;
+}
+
+async function cloudInsertTeacherRow(teacher, inspectorId, authUserId = null) {
+  const row = {
+    id: teacher.id || undefined,
+    owner_id: inspectorId,
+    inspector_id: inspectorId,
+    auth_user_id: authUserId,
+    full_name: teacher.name,
+    email: normEmail(teacher.email),
+    school: teacher.school,
+    grade: teacher.grade,
+    subject: teacher.subject || '',
+    color: teacher.color || COLORS[0],
+  };
+  const { data, error } = await CLOUD.client.from('teachers').upsert(row).select().single();
+  if (error) throw error;
+  return mapTeacher(data);
+}
+
+async function cloudUpdateTeacherRow(teacher) {
+  const row = {
+    full_name: teacher.name,
+    email: normEmail(teacher.email),
+    school: teacher.school,
+    grade: teacher.grade,
+    subject: teacher.subject || '',
+    color: teacher.color || COLORS[0],
+  };
+  const { data, error } = await CLOUD.client.from('teachers').update(row).eq('id', teacher.id).select().single();
+  if (error) throw error;
+  return mapTeacher(data);
+}
+
+async function cloudDeleteTeacherRow(teacherId) {
+  await CLOUD.client.from('visits').delete().eq('teacher_id', teacherId);
+  await CLOUD.client.from('reports').delete().eq('teacher_id', teacherId);
+  await CLOUD.client.from('tickets').delete().eq('teacher_id', teacherId);
+  const { error } = await CLOUD.client.from('teachers').delete().eq('id', teacherId);
+  if (error) throw error;
+}
+
+async function cloudInsertTicket(ticket) {
+  const row = {
+    id: ticket.id || undefined,
+    owner_id: ticket.inspectorId || ticket.ownerId,
+    inspector_id: ticket.inspectorId || ticket.ownerId,
+    teacher_id: ticket.teacherId,
+    teacher_name: ticket.teacherName,
+    school: ticket.school,
+    type: ticket.type,
+    title: ticket.title,
+    description: ticket.desc,
+    subject: ticket.subject || '',
+    unit: ticket.unit || '',
+    notes: ticket.notes || '',
+    preferred_date: ticket.preferredDate,
+    status: ticket.status,
+    inspector_note: ticket.inspectorNote || '',
+    created_at: ticket.createdAt || new Date().toISOString(),
+  };
+  const { data, error } = await CLOUD.client.from('tickets').insert(row).select().single();
+  if (error) throw error;
+  return mapTicket(data);
+}
+
+async function cloudUpdateTicket(ticket) {
+  const row = {
+    status: ticket.status,
+    inspector_note: ticket.inspectorNote || '',
+    preferred_date: ticket.preferredDate || null,
+  };
+  const { data, error } = await CLOUD.client.from('tickets').update(row).eq('id', ticket.id).select().single();
+  if (error) throw error;
+  return mapTicket(data);
+}
+
+async function cloudUpsertVisit(visit) {
+  const row = {
+    id: visit.id || undefined,
+    owner_id: visit.inspectorId || visit.ownerId,
+    inspector_id: visit.inspectorId || visit.ownerId,
+    teacher_id: visit.teacherId,
+    ticket_id: visit.ticketId || null,
+    visit_date: visit.date,
+    status: visit.status || 'scheduled',
+  };
+  const { data, error } = await CLOUD.client.from('visits').upsert(row).select().single();
+  if (error) throw error;
+  return mapVisit(data);
+}
+
+async function cloudDeleteVisitByTicket(ticketId) {
+  if (!ticketId) return;
+  await CLOUD.client.from('visits').delete().eq('ticket_id', ticketId);
+}
+
+async function cloudUploadReportFile(file, teacherId) {
+  if (!file) return { fileName: '', fileUrl: '', fileSize: 0 };
+  const clean = `${Date.now()}_${String(file.name || 'report').replace(/[^\w.\-]+/g, '_')}`;
+  const path = `${teacherId}/${clean}`;
+  try {
+    const { error: uploadError } = await CLOUD.client.storage.from('reports').upload(path, file, { upsert: true });
+    if (uploadError) throw uploadError;
+    const { data } = CLOUD.client.storage.from('reports').getPublicUrl(path);
+    return { fileName: file.name, fileUrl: data?.publicUrl || '', fileSize: file.size || 0 };
+  } catch {
+    return { fileName: file.name, fileUrl: '', fileSize: file.size || 0 };
+  }
+}
+
+async function cloudInsertReport(report) {
+  const row = {
+    id: report.id || undefined,
+    owner_id: report.inspectorId || report.ownerId,
+    inspector_id: report.inspectorId || report.ownerId,
+    teacher_id: report.teacherId,
+    teacher_name: report.teacherName,
+    school: report.school,
+    grade: report.grade,
+    title: report.title,
+    semester: report.semester || '',
+    subject: report.subject || '',
+    summary: report.summary || '',
+    file_name: report.fileName || '',
+    file_url: report.fileUrl || '',
+    file_size: report.fileSize || 0,
+    status: report.status || 'pending_review',
+    inspector_note: report.inspectorNote || '',
+    submitted_at: report.submittedAt || new Date().toISOString(),
+  };
+  const { data, error } = await CLOUD.client.from('reports').insert(row).select().single();
+  if (error) throw error;
+  return mapReport(data);
+}
+
+async function cloudUpdateReport(report) {
+  const row = {
+    status: report.status,
+    inspector_note: report.inspectorNote || '',
+  };
+  const { data, error } = await CLOUD.client.from('reports').update(row).eq('id', report.id).select().single();
+  if (error) throw error;
+  return mapReport(data);
+}
+
+function syncCurrentUserCache() {
+  saveAll();
+  save(KEYS.CURRENT_USER, APP.currentUser);
+}
+
+const _baseLogout = logout;
+logout = async function logoutSupabaseAware() {
+  APP.currentUser = null;
+  save(KEYS.CURRENT_USER, null);
+  await cloudSignOut();
+  showScreen('login');
+  const e1 = document.getElementById('login-email');
+  const e2 = document.getElementById('login-pass');
+  if (e1) e1.value = '';
+  if (e2) e2.value = '';
+};
+
+const _baseResetApp = resetApp;
+resetApp = async function resetAppSupabaseAware() {
+  if (!confirm('⚠ هل أنت متأكد من إعادة ضبط المنظومة المحلية؟ سيتم حذف التخزين المحلي فقط.')) return;
+  Object.values(KEYS).forEach(k => localStorage.removeItem(k));
+  await cloudSignOut();
+  location.reload();
+};
+
+launchApp = async function launchAppSupabaseAware() {
+  const insp = {
+    id: genId(),
+    name: v('s-insp-name'),
+    cardId: v('s-insp-id'),
+    region: v('s-insp-region'),
+    province: v('s-insp-province'),
+    district: v('s-insp-district'),
+    level: v('s-insp-level'),
+    email: normEmail(v('s-insp-email')),
+    pass: v('s-insp-pass'),
+  };
+
+  APP.inspector = insp;
+  APP.teachers = setupTeachers.map(t => ({ ...t, email: normEmail(t.email) }));
+  APP.tickets = [];
+  APP.reports = [];
+  APP.visits = [];
+
+  if (!cloudOn()) {
+    saveAll();
+    save(KEYS.SETUP_DONE, true);
+    setupTeachers = [];
+    showToast('🎉 تم إطلاق المنظومة محلياً');
+    setTimeout(() => showScreen('login'), 900);
+    return;
+  }
+
+  try {
+    const signed = await cloudSignUpUser(insp.email, insp.pass, { role: 'inspector', full_name: insp.name });
+    const authUser = signed?.user;
+    if (!authUser) throw new Error('تعذر إنشاء حساب المفتش');
+
+    const signin = await CLOUD.client.auth.signInWithPassword({ email: insp.email, password: insp.pass });
+    if (signin.error) throw signin.error;
+
+    insp.id = authUser.id;
+    await cloudEnsureInspectorProfile(authUser, insp);
+
+    const createdTeachers = [];
+    for (let i = 0; i < APP.teachers.length; i++) {
+      const teacher = { ...APP.teachers[i], color: APP.teachers[i].color || COLORS[i % COLORS.length] };
+      const tUser = await cloudCreateTeacherAuth(teacher, insp.id);
+      const inserted = await cloudInsertTeacherRow(teacher, insp.id, tUser?.id || null);
+      createdTeachers.push(inserted);
+      await sleep(120);
+    }
+    APP.teachers = createdTeachers;
+    APP.currentUser = { role: 'inspector', id: insp.id };
+    save(KEYS.SETUP_DONE, true);
+    syncCurrentUserCache();
+    setupTeachers = [];
+    showToast('🎉 تم إطلاق المنظومة وربطها بـ Supabase');
+    enterInspector();
+  } catch (err) {
+    console.error(err);
+    saveAll();
+    save(KEYS.SETUP_DONE, true);
+    showToast('⚠ تم حفظ النسخة محلياً، لكن الربط السحابي لم يكتمل. تحقق من Auth وRLS وEmail Confirmations.');
+    setTimeout(() => showScreen('login'), 1100);
+  }
+};
+
+handleLogin = async function handleLoginSupabaseAware(e) {
+  e.preventDefault();
+  const email = normEmail(document.getElementById('login-email')?.value);
+  const pass = document.getElementById('login-pass')?.value || '';
+  const errEl = document.getElementById('login-error');
+  if (errEl) errEl.style.display = 'none';
+
+  if (cloudOn()) {
+    try {
+      const { error } = await CLOUD.client.auth.signInWithPassword({ email, password: pass });
+      if (error) throw error;
+      const user = await cloudGetAuthUser();
+      const roleData = await cloudResolveRole(user?.id);
+      if (!roleData) throw new Error('لا يوجد ملف مرتبط بهذا الحساب داخل الجداول');
+      APP.currentUser = { role: roleData.role, id: roleData.appId };
+      save(KEYS.CURRENT_USER, APP.currentUser);
+      await cloudHydrate(roleData);
+      roleData.role === 'inspector' ? enterInspector() : enterTeacher(roleData.appId);
+      return;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  const localInspector = APP.inspector && APP.inspector.email === email && APP.inspector.pass === pass;
+  if (localInspector) {
+    APP.currentUser = { role: 'inspector', id: APP.inspector.id };
+    save(KEYS.CURRENT_USER, APP.currentUser);
+    enterInspector();
+    return;
+  }
+  const teacher = APP.teachers.find(t => normEmail(t.email) === email && t.pass === pass);
+  if (teacher) {
+    APP.currentUser = { role: 'teacher', id: teacher.id };
+    save(KEYS.CURRENT_USER, APP.currentUser);
+    enterTeacher(teacher.id);
+    return;
+  }
+  if (errEl) errEl.style.display = 'block';
+};
+
+addTeacherFromModal = async function addTeacherFromModalSupabaseAware() {
+  const name = v('m-t-name');
+  const email = normEmail(v('m-t-email'));
+  const pass = v('m-t-pass');
+  const school = v('m-t-school');
+  const grade = v('m-t-grade');
+  const subject = v('m-t-subject');
+
+  if (!name || !email || !pass || !school || !grade) {
+    showToast('⚠ يُرجى ملء الحقول الإلزامية');
+    return;
+  }
+  if (APP.teachers.find(t => normEmail(t.email) === email) || (APP.inspector && normEmail(APP.inspector.email) === email)) {
+    showToast('⚠ هذا البريد الإلكتروني مسجل بالفعل');
+    return;
+  }
+
+  const teacher = {
+    id: genId(), name, email, pass, school, grade, subject,
+    color: COLORS[APP.teachers.length % COLORS.length],
+    inspectorId: APP.inspector?.id || null,
+    ownerId: APP.inspector?.id || null,
+  };
+
+  try {
+    if (cloudOn() && APP.currentUser?.role === 'inspector') {
+      const tUser = await cloudCreateTeacherAuth(teacher, APP.inspector.id);
+      const inserted = await cloudInsertTeacherRow(teacher, APP.inspector.id, tUser?.id || null);
+      APP.teachers.push(inserted);
+    } else {
+      APP.teachers.push(teacher);
+    }
+    syncCurrentUserCache();
+    closeModal('modal-add-teacher');
+    clearFields(['m-t-name','m-t-email','m-t-pass','m-t-school','m-t-grade','m-t-subject']);
+    renderTeachers();
+    renderInspectorOverview();
+    showToast(`✅ تمت إضافة الأستاذ(ة) ${name}`);
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر إضافة الأستاذ. تأكد من SQL patch وAuth.');
+  }
+};
+
+saveTeacherEdit = async function saveTeacherEditSupabaseAware() {
+  const idx = APP.teachers.findIndex(t => t.id === activeTeacherId);
+  if (idx === -1) return;
+  const email = normEmail(v('e-t-email'));
+  if (!v('e-t-name') || !email || !v('e-t-school') || !v('e-t-grade')) {
+    showToast('⚠ يُرجى ملء الحقول الإلزامية');
+    return;
+  }
+  if (APP.teachers.some((t, i) => i !== idx && normEmail(t.email) === email) || (APP.inspector && normEmail(APP.inspector.email) === email)) {
+    showToast('⚠ هذا البريد الإلكتروني مستعمل');
+    return;
+  }
+
+  const updatedTeacher = {
+    ...APP.teachers[idx],
+    name: v('e-t-name'),
+    email,
+    school: v('e-t-school'),
+    grade: v('e-t-grade'),
+    subject: v('e-t-subject'),
+  };
+
+  try {
+    APP.teachers[idx] = cloudOn() ? await cloudUpdateTeacherRow(updatedTeacher) : updatedTeacher;
+    APP.tickets.forEach(t => { if (t.teacherId === activeTeacherId) { t.teacherName = updatedTeacher.name; t.school = updatedTeacher.school; } });
+    APP.reports.forEach(r => { if (r.teacherId === activeTeacherId) { r.teacherName = updatedTeacher.name; r.school = updatedTeacher.school; r.grade = updatedTeacher.grade; } });
+    syncCurrentUserCache();
+    closeModal('modal-edit-teacher');
+    renderTeachers();
+    renderInspectorOverview();
+    if (v('e-t-pass')) {
+      showToast('✅ تم حفظ التعديلات. تغيير كلمة مرور الأستاذ يحتاج إعادة تعيين عبر البريد أو خدمة إدارية.');
+    } else {
+      showToast('✅ تم حفظ التعديلات');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر حفظ التعديلات');
+  }
+};
+
+deleteTeacher = async function deleteTeacherSupabaseAware() {
+  const teacher = APP.teachers.find(t => t.id === activeTeacherId);
+  if (!teacher) return;
+  if (!confirm(`هل تريد حذف الأستاذ(ة) ${teacher.name}؟`)) return;
+
+  try {
+    if (cloudOn()) await cloudDeleteTeacherRow(activeTeacherId);
+    APP.teachers = APP.teachers.filter(t => t.id !== activeTeacherId);
+    APP.tickets = APP.tickets.filter(t => t.teacherId !== activeTeacherId);
+    APP.reports = APP.reports.filter(r => r.teacherId !== activeTeacherId);
+    APP.visits = APP.visits.filter(v => v.teacherId !== activeTeacherId);
+    syncCurrentUserCache();
+    closeModal('modal-edit-teacher');
+    renderTeachers();
+    renderInspectorOverview();
+    showToast('🗑️ تم حذف الأستاذ وبياناته التطبيقية. حساب الدخول في Auth يبقى بحاجة حذف إداري من لوحة Supabase.');
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر حذف الأستاذ');
+  }
+};
+
+submitRequest = async function submitRequestSupabaseAware() {
+  const title = v('req-title');
+  const date = v('req-date');
+  const desc = v('req-desc');
+  if (!title || !date || !desc) {
+    showToast('⚠ يُرجى ملء الحقول الإلزامية');
+    return;
+  }
+  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id);
+  if (!teacher) return;
+
+  const ticket = {
+    id: genId(),
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    school: teacher.school,
+    type: selectedRequestType,
+    title,
+    desc,
+    subject: v('req-subject'),
+    unit: v('req-unit'),
+    notes: v('req-notes'),
+    preferredDate: date,
+    status: 'pending',
+    inspectorNote: '',
+    createdAt: new Date().toISOString(),
+    ownerId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
+    inspectorId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
+  };
+
+  try {
+    const finalTicket = cloudOn() ? await cloudInsertTicket(ticket) : ticket;
+    APP.tickets.unshift(finalTicket);
+    syncCurrentUserCache();
+    clearRequestForm();
+    showToast('✅ تم إرسال طلبك بنجاح');
+    tTab('t-home', document.querySelector('[data-tab="t-home"]'));
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر إرسال الطلب');
+  }
+};
+
+respondTicket = async function respondTicketSupabaseAware(newStatus) {
+  const idx = APP.tickets.findIndex(t => t.id === activeTicketId);
+  if (idx === -1) return;
+  const note = document.getElementById('ticket-inspector-note')?.value || '';
+  APP.tickets[idx].status = newStatus;
+  APP.tickets[idx].inspectorNote = note;
+  try {
+    const updated = cloudOn() ? await cloudUpdateTicket(APP.tickets[idx]) : APP.tickets[idx];
+    APP.tickets[idx] = updated;
+
+    if (newStatus === 'inprogress' && APP.tickets[idx].preferredDate) {
+      const visit = {
+        id: genId(),
+        ticketId: APP.tickets[idx].id,
+        teacherId: APP.tickets[idx].teacherId,
+        date: APP.tickets[idx].preferredDate,
+        status: 'scheduled',
+        ownerId: APP.tickets[idx].inspectorId || APP.tickets[idx].ownerId || APP.inspector?.id,
+        inspectorId: APP.tickets[idx].inspectorId || APP.tickets[idx].ownerId || APP.inspector?.id,
+      };
+      const storedVisit = cloudOn() ? await cloudUpsertVisit(visit) : visit;
+      const existingIdx = APP.visits.findIndex(v => v.ticketId === visit.ticketId);
+      if (existingIdx >= 0) APP.visits[existingIdx] = storedVisit; else APP.visits.push(storedVisit);
+    }
+
+    if (newStatus === 'closed') {
+      APP.visits = APP.visits.filter(v => v.ticketId !== APP.tickets[idx].id);
+      if (cloudOn()) await cloudDeleteVisitByTicket(APP.tickets[idx].id);
+    }
+
+    syncCurrentUserCache();
+    closeModal('modal-ticket');
+    renderTickets();
+    renderInspectorOverview();
+    showToast(newStatus === 'closed' ? '✅ تم إغلاق الطلب' : '✅ تم تحديث حالة الطلب');
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر تحديث الطلب');
+  }
+};
+
+uploadReport = async function uploadReportSupabaseAware() {
+  const title = v('rpt-title');
+  const semester = v('rpt-semester');
+  const subject = v('rpt-subject');
+  const summary = v('rpt-summary');
+  if (!title) { showToast('⚠ يُرجى إدخال عنوان التقرير'); return; }
+
+  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id);
+  if (!teacher) return;
+
+  try {
+    const fileInfo = cloudOn() ? await cloudUploadReportFile(document.getElementById('rpt-file')?.files?.[0] || null, teacher.id) : { fileName: reportAttachment?.name || '', fileUrl: '', fileSize: reportAttachment?.size || 0 };
+    const report = {
+      id: genId(),
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      school: teacher.school,
+      grade: teacher.grade,
+      title,
+      semester,
+      subject,
+      summary,
+      fileName: fileInfo.fileName,
+      fileUrl: fileInfo.fileUrl,
+      fileSize: fileInfo.fileSize,
+      status: 'pending_review',
+      inspectorNote: '',
+      submittedAt: new Date().toISOString(),
+      ownerId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
+      inspectorId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
+    };
+    const finalReport = cloudOn() ? await cloudInsertReport(report) : report;
+    APP.reports.unshift(finalReport);
+    syncCurrentUserCache();
+    closeModal('modal-upload-report');
+    clearFields(['rpt-title','rpt-subject','rpt-summary']);
+    const fi = document.getElementById('rpt-file'); if (fi) fi.value = '';
+    reportAttachment = null;
+    setText('rpt-file-name', 'لم يتم اختيار ملف');
+    renderTeacherReports(teacher);
+    renderTeacherHome(teacher);
+    showToast(finalReport.fileUrl ? '✅ تم رفع التقرير والملف' : '✅ تم رفع التقرير');
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر رفع التقرير');
+  }
+};
+
+respondReport = async function respondReportSupabaseAware(newStatus) {
+  const idx = APP.reports.findIndex(r => r.id === activeReportId);
+  if (idx === -1) return;
+  const note = document.getElementById('report-inspector-note')?.value || '';
+  APP.reports[idx].status = newStatus;
+  APP.reports[idx].inspectorNote = note;
+  try {
+    APP.reports[idx] = cloudOn() ? await cloudUpdateReport(APP.reports[idx]) : APP.reports[idx];
+    syncCurrentUserCache();
+    closeModal('modal-report-review');
+    renderInspectorReports();
+    renderInspectorOverview();
+    showToast(newStatus === 'approved' ? '✅ تم اعتماد التقرير' : '❌ تم رفض التقرير');
+  } catch (err) {
+    console.error(err);
+    showToast('❌ تعذر تحديث التقرير');
+  }
+};
+
+exportData = async function exportDataSupabaseAware() {
+  if (cloudOn() && APP.currentUser) {
+    try { await cloudHydrate(); } catch {}
+  }
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    mode: cloudOn() ? 'supabase+local-cache' : 'local-only',
+    inspector: APP.inspector,
+    teachers: APP.teachers,
+    tickets: APP.tickets,
+    reports: APP.reports,
+    visits: APP.visits,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `inspection_backup_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('✅ تم إنشاء نسخة احتياطية');
+};
+
+importData = function importDataSupabaseAware(ev) {
+  const file = ev?.target?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || (!data.inspector && !Array.isArray(data.teachers))) throw new Error('bad');
+      APP.inspector = data.inspector || null;
+      APP.teachers = data.teachers || [];
+      APP.tickets = data.tickets || [];
+      APP.reports = data.reports || [];
+      APP.visits = data.visits || [];
+      saveAll();
+      if (APP.currentUser?.role === 'inspector') {
+        renderInspectorOverview(); renderTeachers(); renderTickets(); renderInspectorReports();
+      }
+      showToast('✅ تم استيراد النسخة الاحتياطية محلياً');
+    } catch (err) {
+      console.error(err);
+      showToast('❌ ملف النسخة الاحتياطية غير صالح');
+    } finally {
+      if (ev.target) ev.target.value = '';
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const pwd = document.getElementById('s-insp-pass');
+  if (pwd) pwd.setAttribute('minlength', '6');
+
+  if (cloudOn()) {
+    CLOUD.client.auth.onAuthStateChange(async (event) => {
+      if (event === 'SIGNED_OUT') {
+        APP.currentUser = null;
+        save(KEYS.CURRENT_USER, null);
+      }
+    });
+
+    setTimeout(async () => {
+      try {
+        const restored = await cloudRestoreRoute();
+        if (!restored && load(KEYS.SETUP_DONE, false) && !APP.currentUser) showScreen('login');
+      } catch (err) {
+        console.error(err);
+      }
+    }, 50);
+  }
+});
