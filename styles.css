@@ -1004,3 +1004,32 @@ body {
   border-color: var(--gray-200);
 }
 #share-invite-btn { white-space: nowrap; }
+
+
+/* ════════════════════════════════════════
+   Advanced cloud UI additions
+════════════════════════════════════════ */
+.advanced-filters{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 18px}
+.filter-input{min-width:180px;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);background:#fff;font-family:var(--font-b);font-size:.85rem}
+.filter-input:focus{outline:none;border-color:var(--red-700);box-shadow:0 0 0 3px rgba(196,30,58,.08)}
+.invite-hero{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 18px;border:1px solid var(--gray-200);border-radius:var(--radius);background:linear-gradient(180deg,#fff,var(--gray-50));margin-bottom:14px}
+.invite-hero-title{font-size:1rem;font-weight:800;color:var(--gray-900)}
+.invite-hero-sub{font-size:.82rem;color:var(--gray-500);margin-top:4px}
+.invite-code-chip,.invite-code-mini{font-family:var(--font-d);font-weight:900;letter-spacing:1px;padding:8px 12px;border-radius:999px;background:var(--green-50);color:var(--green-900);border:1px solid var(--green-100)}
+.invite-grid{display:flex;flex-direction:column;gap:10px}
+.invite-card-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--radius-sm);border:1px solid var(--gray-200);background:#fff}
+.invite-row-title{font-weight:800}.invite-row-sub{font-size:.8rem;color:var(--gray-500)}
+.invite-row-actions{display:flex;gap:8px;align-items:center}.invite-empty{padding:14px;border:1px dashed var(--gray-300);border-radius:var(--radius-sm);color:var(--gray-500)}
+.notice-box{padding:12px 14px;border-radius:var(--radius-sm);background:var(--amber-50);border:1px solid var(--amber-100);color:var(--amber-700);margin-bottom:14px;font-size:.84rem}
+.notice-box.soft{background:var(--blue-50);border-color:var(--blue-100);color:var(--blue-700)}
+.teacher-meta-line{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--gray-100);font-size:.75rem;font-weight:800;color:var(--gray-700)}
+.ts-active{background:var(--green-50);color:var(--green-900)}.ts-invited{background:var(--amber-50);color:var(--amber-700)}.ts-suspended{background:var(--red-50);color:var(--red-700)}.ts-archived{background:var(--gray-100);color:var(--gray-700)}
+.tc-footer-wrap{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}.table-sub{font-size:.75rem;color:var(--gray-500);margin-top:2px}
+.modal-xl{max-width:980px;width:min(980px,94vw)}
+.dossier-head{display:flex;gap:16px;align-items:center;margin-bottom:18px}.dossier-avatar{width:68px;height:68px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:#fff;font-weight:900}
+.dossier-name{font-size:1.2rem;font-weight:900}.dossier-sub{color:var(--gray-500);margin-top:3px}.dossier-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.dossier-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.dossier-stat{background:linear-gradient(180deg,#fff,var(--gray-50));border:1px solid var(--gray-200);padding:14px;border-radius:var(--radius);display:flex;flex-direction:column;gap:4px;align-items:center}.dossier-stat strong{font-size:1.35rem}.dossier-layout{display:grid;grid-template-columns:1.1fr 1.2fr;gap:16px}.dossier-panel{border:1px solid var(--gray-200);border-radius:var(--radius);padding:16px;background:#fff}.dossier-panel h4{margin-bottom:10px;font-size:1rem}
+.timeline-list{display:flex;flex-direction:column;gap:10px}.timeline-item{padding:12px 14px;border-radius:var(--radius-sm);background:var(--gray-50);border:1px solid var(--gray-200)}.timeline-type{display:inline-block;margin-bottom:4px;padding:3px 8px;border-radius:999px;background:var(--blue-50);color:var(--blue-700);font-size:.72rem;font-weight:800}.timeline-text{font-weight:700}.timeline-date{font-size:.77rem;color:var(--gray-500);margin-top:5px}
+.pc-item-wide{grid-column:span 2}
+@media (max-width: 900px){.dossier-grid{grid-template-columns:repeat(2,1fr)}.dossier-layout{grid-template-columns:1fr}.filter-input{min-width:140px}}
+@media (max-width: 700px){.advanced-filters{flex-direction:column}.pc-item-wide{grid-column:span 1}.invite-hero,.invite-card-row{flex-direction:column;align-items:flex-start}.dossier-grid{grid-template-columns:1fr 1fr}}
