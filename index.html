@@ -282,9 +282,9 @@
         <button type="submit" class="btn-login">تسجيل الدخول</button>
       </form>
 
-      <div class="login-footer-note">
-        <a href="#" onclick="openModal('modal-self-register-teacher'); return false;">تسجيل أستاذ جديد</a>
-        <span class="footer-sep">•</span>
+      <div class="login-footer-note login-footer-actions">
+        <a href="#" onclick="openModal('modal-auth-register'); return false;">إنشاء حساب</a>
+        <a href="#" onclick="openModal('modal-supabase-config'); return false;">ربط Supabase</a>
         <a href="#" onclick="resetApp()">⚙ إعادة ضبط المنظومة</a>
       </div>
     </div>
@@ -938,135 +938,118 @@
 </div>
 
 
-<!-- Self Register Teacher Modal -->
-<div id="modal-self-register-teacher" class="modal-overlay" onclick="closeModal('modal-self-register-teacher')">
+<!-- Supabase Config Modal -->
+<div id="modal-supabase-config" class="modal-overlay" onclick="closeModal('modal-supabase-config')">
   <div class="modal-box" onclick="event.stopPropagation()">
     <div class="modal-hd">
-      <h3>تسجيل أستاذ جديد</h3>
-      <button class="modal-x" onclick="closeModal('modal-self-register-teacher')">✕</button>
+      <h3>ربط Supabase</h3>
+      <button class="modal-x" onclick="closeModal('modal-supabase-config')">✕</button>
     </div>
-    <div class="modal-body light-form">
-      <div class="notice-box">
-        <strong>مهم:</strong>
-        استعمل رمز الدعوة الذي يرسله لك المفتش، ثم أكمل بياناتك.
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Project URL</label>
+        <input class="form-input" id="sb-url" type="url" placeholder="https://YOUR-PROJECT.supabase.co" dir="ltr" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Anon Key</label>
+        <textarea class="form-textarea" id="sb-anon" rows="4" placeholder="eyJ..." dir="ltr"></textarea>
+      </div>
+      <div class="cloud-note">بعد الحفظ ستصبح المنظومة سحابية: دخول حقيقي، مزامنة، وصلاحيات ورفع ملفات.</div>
+    </div>
+    <div class="modal-ft modal-ft-spread">
+      <button class="btn-danger" onclick="clearSupabaseConfig()">حذف الربط</button>
+      <div class="inline-actions">
+        <button class="btn-ghost" onclick="closeModal('modal-supabase-config')">إلغاء</button>
+        <button class="btn-primary" onclick="saveSupabaseConfig()">حفظ الربط</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Register Modal -->
+<div id="modal-auth-register" class="modal-overlay" onclick="closeModal('modal-auth-register')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-hd">
+      <h3>إنشاء حساب جديد</h3>
+      <button class="modal-x" onclick="closeModal('modal-auth-register')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="role-tabs-mini">
+        <button class="role-mini active" id="reg-role-inspector" onclick="setRegisterRole('inspector', this)">مفتش</button>
+        <button class="role-mini" id="reg-role-teacher" onclick="setRegisterRole('teacher', this)">أستاذ/ة</button>
       </div>
       <div class="form-row-2">
         <div class="form-group">
           <label class="form-label">الاسم الكامل <span class="req">*</span></label>
-          <input class="form-input" id="sr-name" type="text" placeholder="الاسم الكامل" />
+          <input class="form-input" id="reg-name" type="text" placeholder="الاسم الكامل" />
         </div>
         <div class="form-group">
           <label class="form-label">البريد الإلكتروني <span class="req">*</span></label>
-          <input class="form-input" id="sr-email" type="email" placeholder="teacher@men.gov.ma" />
+          <input class="form-input" id="reg-email" type="email" placeholder="name@men.gov.ma" />
         </div>
       </div>
       <div class="form-row-2">
         <div class="form-group">
           <label class="form-label">كلمة المرور <span class="req">*</span></label>
-          <input class="form-input" id="sr-pass" type="password" placeholder="6 أحرف على الأقل" />
+          <input class="form-input" id="reg-pass" type="password" placeholder="6 أحرف على الأقل" />
         </div>
-        <div class="form-group">
-          <label class="form-label">رمز الدعوة <span class="req">*</span></label>
-          <input class="form-input" id="sr-code" type="text" placeholder="مثال: ABC12345" />
-        </div>
-      </div>
-      <div class="form-row-3">
-        <div class="form-group">
-          <label class="form-label">المؤسسة التعليمية <span class="req">*</span></label>
-          <input class="form-input" id="sr-school" type="text" placeholder="اسم المؤسسة" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">المستوى الدراسي <span class="req">*</span></label>
-          <select class="form-input" id="sr-grade">
-            <option value="">اختر المستوى...</option>
-            <option>المستوى الأول ابتدائي</option>
-            <option>المستوى الثاني ابتدائي</option>
-            <option>المستوى الثالث ابتدائي</option>
-            <option>المستوى الرابع ابتدائي</option>
-            <option>المستوى الخامس ابتدائي</option>
-            <option>المستوى السادس ابتدائي</option>
-            <option>السنة الأولى إعدادي</option>
-            <option>السنة الثانية إعدادي</option>
-            <option>السنة الثالثة إعدادي</option>
-            <option>الجذع المشترك</option>
-            <option>السنة الأولى باكالوريا</option>
-            <option>السنة الثانية باكالوريا</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">المادة</label>
-          <input class="form-input" id="sr-subject" type="text" placeholder="مثال: اللغة العربية" />
+        <div class="form-group inspector-only">
+          <label class="form-label">رقم البطاقة المهنية</label>
+          <input class="form-input" id="reg-card-id" type="text" placeholder="INS-2026-001" />
         </div>
       </div>
-      <div class="notice-box soft" id="self-register-note">بعد التسجيل ستستطيع الدخول من نفس الرابط ومشاركة المنظومة مع المفتش المرتبط برمز الدعوة.</div>
+      <div class="form-row-2 inspector-only">
+        <div class="form-group">
+          <label class="form-label">الجهة</label>
+          <input class="form-input" id="reg-region" type="text" placeholder="جهة سوس-ماسة" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">النيابة / المديرية</label>
+          <input class="form-input" id="reg-province" type="text" placeholder="أكادير إداوتنان" />
+        </div>
+      </div>
+      <div class="form-row-2 inspector-only">
+        <div class="form-group">
+          <label class="form-label">الدائرة التعليمية</label>
+          <input class="form-input" id="reg-district" type="text" placeholder="دائرة ..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label">المرحلة</label>
+          <input class="form-input" id="reg-level" type="text" placeholder="التعليم الابتدائي" />
+        </div>
+      </div>
+      <div class="teacher-only" style="display:none">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">بريد المفتش <span class="req">*</span></label>
+            <input class="form-input" id="reg-inspector-email" type="email" placeholder="inspector@men.gov.ma" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">المؤسسة التعليمية <span class="req">*</span></label>
+            <input class="form-input" id="reg-school" type="text" placeholder="اسم المؤسسة" />
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">المستوى الدراسي <span class="req">*</span></label>
+            <input class="form-input" id="reg-grade" type="text" placeholder="المستوى السادس ابتدائي" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">المادة الدراسية</label>
+            <input class="form-input" id="reg-subject" type="text" placeholder="اللغة العربية" />
+          </div>
+        </div>
+      </div>
     </div>
     <div class="modal-ft">
-      <button class="btn-ghost" onclick="closeModal('modal-self-register-teacher')">إلغاء</button>
-      <button class="btn-success" onclick="selfRegisterTeacher()">تسجيل الحساب</button>
+      <button class="btn-ghost" onclick="closeModal('modal-auth-register')">إلغاء</button>
+      <button class="btn-success" onclick="registerAccount()">إنشاء الحساب</button>
     </div>
   </div>
 </div>
 
-<!-- Complete Teacher Profile Modal -->
-<div id="modal-complete-teacher-profile" class="modal-overlay" onclick="closeModal('modal-complete-teacher-profile')">
-  <div class="modal-box" onclick="event.stopPropagation()">
-    <div class="modal-hd">
-      <h3>إكمال ملف الأستاذ</h3>
-      <button class="modal-x" onclick="closeModal('modal-complete-teacher-profile')">✕</button>
-    </div>
-    <div class="modal-body light-form">
-      <div class="notice-box" id="complete-profile-note">أكمل بياناتك لإتمام الربط مع المفتش.</div>
-      <div class="form-row-2">
-        <div class="form-group">
-          <label class="form-label">الاسم الكامل <span class="req">*</span></label>
-          <input class="form-input" id="cp-name" type="text" placeholder="الاسم الكامل" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">البريد الإلكتروني</label>
-          <input class="form-input" id="cp-email" type="email" placeholder="teacher@men.gov.ma" disabled />
-        </div>
-      </div>
-      <div class="form-row-2">
-        <div class="form-group">
-          <label class="form-label">المؤسسة التعليمية <span class="req">*</span></label>
-          <input class="form-input" id="cp-school" type="text" placeholder="اسم المؤسسة" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">المستوى الدراسي <span class="req">*</span></label>
-          <select class="form-input" id="cp-grade">
-            <option value="">اختر المستوى...</option>
-            <option>المستوى الأول ابتدائي</option>
-            <option>المستوى الثاني ابتدائي</option>
-            <option>المستوى الثالث ابتدائي</option>
-            <option>المستوى الرابع ابتدائي</option>
-            <option>المستوى الخامس ابتدائي</option>
-            <option>المستوى السادس ابتدائي</option>
-            <option>السنة الأولى إعدادي</option>
-            <option>السنة الثانية إعدادي</option>
-            <option>السنة الثالثة إعدادي</option>
-            <option>الجذع المشترك</option>
-            <option>السنة الأولى باكالوريا</option>
-            <option>السنة الثانية باكالوريا</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row-2">
-        <div class="form-group">
-          <label class="form-label">المادة</label>
-          <input class="form-input" id="cp-subject" type="text" placeholder="مثال: اللغة العربية" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">رمز الدعوة <span class="req">*</span></label>
-          <input class="form-input" id="cp-code" type="text" placeholder="رمز الدعوة" />
-        </div>
-      </div>
-    </div>
-    <div class="modal-ft">
-      <button class="btn-ghost" onclick="logout()">خروج</button>
-      <button class="btn-success" onclick="completeTeacherProfile()">حفظ ومتابعة</button>
-    </div>
-  </div>
-</div>
+<!-- Cloud Status -->
+<div id="cloud-status-chip" class="cloud-status-chip" style="display:none">سحابة: غير متصل</div>
 
 <!-- TOAST -->
 <div id="toast" class="toast"></div>

@@ -1515,2090 +1515,714 @@ function importData(ev) {
 }
 
 
-/* ══════════════════════════════════════════════════════════
-   Supabase Cloud Sync Layer
-   Keeps the same UI/UX while moving core data to Supabase.
-   Note: teacher password changes/deletion still need admin/server-side handling.
-══════════════════════════════════════════════════════════ */
-const SUPABASE_URL = 'https://lftlcepnsvvhoaopnqjf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmdGxjZXBuc3Z2aG9hb3BucWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NjA4OTIsImV4cCI6MjA5MDEzNjg5Mn0.bUUXG0DHhUcpeeogMKqM2LOiBvHmlbwO8ukB1qqnyQE';
+/* ===== Supabase Cloud Sync Layer ===== */
+const SUPABASE_CFG_KEY = 'mtit_supabase_cfg';
+const SB = { client:null, config:null, ready:false, booted:false, registerRole:'inspector' };
 
-const CLOUD = {
-  enabled: !!(window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY),
-  client: null,
-  signupClient: null,
-  ready: false,
-};
-
-if (CLOUD.enabled) {
-  CLOUD.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-  });
-  CLOUD.signupClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-  });
-  CLOUD.ready = true;
+function updateCloudStatus(text, mode='warn') {
+  const chip = document.getElementById('cloud-status-chip');
+  if (!chip) return;
+  chip.style.display = 'block';
+  chip.textContent = text;
+  chip.className = 'cloud-status-chip ' + (mode || 'warn');
 }
 
-function cloudOn() { return !!CLOUD.ready; }
-function normEmail(v) { return String(v || '').trim().toLowerCase(); }
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function uniqueIdOrGen(v) { return v || genId(); }
-function makeInviteCode(seed = '') {
-  const base = String(seed || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 4) || 'MORO';
-  return `${base}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+function getSupabaseConfig() {
+  try { return JSON.parse(localStorage.getItem(SUPABASE_CFG_KEY) || 'null'); } catch { return null; }
 }
-function getInspectorInviteCode() {
-  return APP?.inspector?.shareCode || APP?.inspector?.cardId || '';
+
+function initSupabaseClient() {
+  const cfg = getSupabaseConfig();
+  SB.config = cfg;
+  SB.ready = false;
+  SB.client = null;
+  if (!cfg || !cfg.url || !cfg.anonKey || !window.supabase?.createClient) {
+    updateCloudStatus('سحابة: غير مفعلة', 'warn');
+    return null;
+  }
+  try {
+    SB.client = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true } });
+    SB.ready = true;
+    updateCloudStatus('سحابة: جاهزة', 'ok');
+    const urlEl = document.getElementById('sb-url');
+    const anonEl = document.getElementById('sb-anon');
+    if (urlEl) urlEl.value = cfg.url || '';
+    if (anonEl) anonEl.value = cfg.anonKey || '';
+    return SB.client;
+  } catch (err) {
+    console.error(err);
+    updateCloudStatus('سحابة: خطأ في الربط', 'warn');
+    return null;
+  }
 }
-async function cloudFindInspectorByShareCode(code) {
-  const clean = String(code || '').trim();
-  if (!clean) return null;
-  const { data, error } = await CLOUD.client.rpc('find_inspector_by_share_code', { p_code: clean });
+
+function saveSupabaseConfig() {
+  const url = document.getElementById('sb-url')?.value.trim();
+  const anonKey = document.getElementById('sb-anon')?.value.trim();
+  if (!url || !anonKey) { showToast('⚠ أدخل رابط المشروع و anon key'); return; }
+  localStorage.setItem(SUPABASE_CFG_KEY, JSON.stringify({ url, anonKey }));
+  initSupabaseClient();
+  closeModal('modal-supabase-config');
+  showToast('✅ تم حفظ ربط Supabase');
+}
+
+async function clearSupabaseConfig() {
+  localStorage.removeItem(SUPABASE_CFG_KEY);
+  if (SB.client) {
+    try { await SB.client.auth.signOut(); } catch {}
+  }
+  SB.client = null;
+  SB.ready = false;
+  closeModal('modal-supabase-config');
+  updateCloudStatus('سحابة: غير مفعلة', 'warn');
+  showToast('🧹 تم حذف الربط السحابي');
+}
+
+function setRegisterRole(role, btn) {
+  SB.registerRole = role;
+  document.querySelectorAll('.role-mini').forEach(x => x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.inspector-only').forEach(el => el.style.display = role === 'inspector' ? '' : 'none');
+  document.querySelectorAll('.teacher-only').forEach(el => el.style.display = role === 'teacher' ? '' : 'none');
+}
+
+async function cloudBoot() {
+  initSupabaseClient();
+  if (!SB.ready || !SB.client || SB.booted) return;
+  SB.booted = true;
+  try {
+    const { data: { session } } = await SB.client.auth.getSession();
+    if (!session?.user) return;
+    const profile = await ensureProfileFromSession(session.user);
+    if (!profile) return;
+    APP.currentUser = { role: profile.role, id: session.user.id };
+    save(KEYS.CURRENT_USER, APP.currentUser);
+    await loadCloudState(profile.role, session.user);
+    if (profile.role === 'inspector') enterInspector(); else enterTeacher(session.user.id);
+  } catch (err) {
+    console.error(err);
+    updateCloudStatus('سحابة: تعذر استرجاع الجلسة', 'warn');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initSupabaseClient();
+  cloudBoot();
+});
+
+async function ensureProfileFromSession(user) {
+  if (!SB.ready || !user) return null;
+  let { data: profile, error } = await SB.client.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
   if (error) throw error;
-  return Array.isArray(data) ? (data[0] || null) : data;
-}
-function copyShareInvite() {
-  const code = getInspectorInviteCode();
-  if (!code) {
-    showToast('⚠ لا يوجد رمز دعوة بعد');
-    return;
-  }
-  const text = `رابط المنظومة: ${location.href}
-رمز الدعوة: ${code}`;
-  navigator.clipboard?.writeText(text).then(() => {
-    showToast(`✅ تم نسخ رمز الدعوة: ${code}`);
-  }).catch(() => {
-    showToast(`رمز الدعوة: ${code}`);
-  });
-}
-let pendingTeacherProfile = null;
-
-async function cloudGetAuthUser() {
-  if (!cloudOn()) return null;
-  const { data, error } = await CLOUD.client.auth.getUser();
-  if (error) return null;
-  return data?.user || null;
-}
-
-async function cloudGetSession() {
-  if (!cloudOn()) return null;
-  const { data } = await CLOUD.client.auth.getSession();
-  return data?.session || null;
-}
-
-async function cloudSignOut() {
-  if (!cloudOn()) return;
-  try { await CLOUD.client.auth.signOut(); } catch {}
-}
-
-async function cloudRestoreRoute() {
-  if (!cloudOn()) return false;
-  const user = await cloudGetAuthUser();
-  if (!user) return false;
-  const roleData = await cloudResolveRole(user.id);
-  if (!roleData) return false;
-  APP.currentUser = { role: roleData.role, id: roleData.appId };
-  save(KEYS.CURRENT_USER, APP.currentUser);
-  await cloudHydrate(roleData);
-  roleData.role === 'inspector' ? enterInspector() : enterTeacher(roleData.appId);
-  return true;
-}
-
-async function cloudResolveRole(authUserId) {
-  if (!cloudOn() || !authUserId) return null;
-
-  let { data: inspector } = await CLOUD.client
-    .from('inspectors')
-    .select('*')
-    .eq('id', authUserId)
-    .maybeSingle();
-  if (inspector) {
-    return { role: 'inspector', appId: inspector.id, inspector, teacher: null };
-  }
-
-  let teacher = null;
-  let teacherErr = null;
-  ({ data: teacher, error: teacherErr } = await CLOUD.client
-    .from('teachers')
-    .select('*')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle());
-
-  if ((!teacher && teacherErr) || !teacher) {
-    ({ data: teacher } = await CLOUD.client
-      .from('teachers')
-      .select('*')
-      .eq('email', normEmail((await cloudGetAuthUser())?.email))
-      .maybeSingle());
-  }
-
-  if (teacher) {
-    return { role: 'teacher', appId: teacher.id, inspector: null, teacher };
-  }
-
-  return null;
-}
-
-async function cloudHydrate(roleData = null) {
-  if (!cloudOn()) return false;
-  const authUser = await cloudGetAuthUser();
-  if (!authUser) return false;
-  if (!roleData) roleData = await cloudResolveRole(authUser.id);
-  if (!roleData) return false;
-
-  if (roleData.role === 'inspector') {
-    const inspectorId = roleData.inspector?.id || authUser.id;
-    APP.inspector = mapInspector(roleData.inspector || (await cloudFetchInspector(inspectorId)) || null);
-    APP.teachers = await cloudFetchTeachersForInspector(inspectorId);
-    APP.tickets = await cloudFetchTicketsForInspector(inspectorId);
-    APP.reports = await cloudFetchReportsForInspector(inspectorId);
-    APP.visits = await cloudFetchVisitsForInspector(inspectorId);
-    saveAll();
-    return true;
-  }
-
-  const teacher = roleData.teacher || await cloudFetchTeacherByAuthUserId(authUser.id) || await cloudFetchTeacherByEmail(authUser.email);
-  if (!teacher) return false;
-  const inspector = teacher.inspector_id ? await cloudFetchInspector(teacher.inspector_id) : null;
-  APP.inspector = mapInspector(inspector);
-  APP.teachers = [mapTeacher(teacher)];
-  APP.tickets = await cloudFetchTicketsForTeacher(teacher.id);
-  APP.reports = await cloudFetchReportsForTeacher(teacher.id);
-  APP.visits = await cloudFetchVisitsForTeacher(teacher.id);
-  saveAll();
-  return true;
-}
-
-function mapInspector(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    name: row.full_name || row.name || '',
-    cardId: row.card_id || row.cardId || '',
-    shareCode: row.share_code || row.shareCode || row.card_id || row.cardId || '',
-    region: row.region || '',
-    province: row.province || '',
-    district: row.district || '',
-    level: row.level || '',
-    email: row.email || '',
-    pass: '',
-    createdAt: row.created_at || '',
-  };
-}
-
-function mapTeacher(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    authUserId: row.auth_user_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-    ownerId: row.owner_id || row.inspector_id || null,
-    name: row.full_name || row.name || '',
-    email: row.email || '',
-    pass: '',
-    school: row.school || '',
-    grade: row.grade || '',
-    subject: row.subject || '',
-    color: row.color || COLORS[0],
-    createdAt: row.created_at || '',
-  };
-}
-
-function mapTicket(row) {
-  return {
-    id: row.id,
-    teacherId: row.teacher_id,
-    teacherName: row.teacher_name || '',
-    school: row.school || '',
-    type: row.type || 'visit',
-    title: row.title || '',
-    desc: row.description || row.desc || '',
-    subject: row.subject || '',
-    unit: row.unit || '',
-    notes: row.notes || '',
-    preferredDate: row.preferred_date || row.preferredDate || '',
-    status: row.status || 'pending',
-    inspectorNote: row.inspector_note || row.inspectorNote || '',
-    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-    ownerId: row.owner_id || row.inspector_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-  };
-}
-
-function mapReport(row) {
-  return {
-    id: row.id,
-    teacherId: row.teacher_id,
-    teacherName: row.teacher_name || '',
-    school: row.school || '',
-    grade: row.grade || '',
-    title: row.title || '',
-    semester: row.semester || '',
-    subject: row.subject || '',
-    summary: row.summary || '',
-    fileName: row.file_name || row.fileName || '',
-    fileUrl: row.file_url || row.fileUrl || '',
-    fileSize: row.file_size || 0,
-    status: row.status || 'pending_review',
-    inspectorNote: row.inspector_note || '',
-    submittedAt: row.submitted_at || row.submittedAt || new Date().toISOString(),
-    ownerId: row.owner_id || row.inspector_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-  };
-}
-
-function mapVisit(row) {
-  return {
-    id: row.id,
-    ticketId: row.ticket_id,
-    teacherId: row.teacher_id,
-    date: row.visit_date || row.date || '',
-    status: row.status || 'scheduled',
-    createdAt: row.created_at || new Date().toISOString(),
-    ownerId: row.owner_id || row.inspector_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-  };
-}
-
-async function cloudFetchInspector(id) {
-  if (!id) return null;
-  const { data } = await CLOUD.client.from('inspectors').select('*').eq('id', id).maybeSingle();
-  return data || null;
-}
-
-async function cloudFetchTeacherByAuthUserId(authUserId) {
-  if (!authUserId) return null;
-  const { data } = await CLOUD.client.from('teachers').select('*').eq('auth_user_id', authUserId).maybeSingle();
-  return data || null;
-}
-
-async function cloudFetchTeacherByEmail(email) {
-  if (!email) return null;
-  const { data } = await CLOUD.client.from('teachers').select('*').eq('email', normEmail(email)).maybeSingle();
-  return data || null;
-}
-
-async function cloudFetchTeachersForInspector(inspectorId) {
-  let { data, error } = await CLOUD.client
-    .from('teachers')
-    .select('*')
-    .eq('inspector_id', inspectorId)
-    .order('created_at', { ascending: true });
-  if (error || !data) {
-    ({ data } = await CLOUD.client.from('teachers').select('*').eq('owner_id', inspectorId).order('created_at', { ascending: true }));
-  }
-  return (data || []).map(mapTeacher);
-}
-
-async function cloudFetchTicketsForInspector(inspectorId) {
-  let { data, error } = await CLOUD.client
-    .from('tickets')
-    .select('*')
-    .eq('inspector_id', inspectorId)
-    .order('created_at', { ascending: false });
-  if (error || !data) {
-    ({ data } = await CLOUD.client.from('tickets').select('*').eq('owner_id', inspectorId).order('created_at', { ascending: false }));
-  }
-  return (data || []).map(mapTicket);
-}
-
-async function cloudFetchReportsForInspector(inspectorId) {
-  let { data, error } = await CLOUD.client
-    .from('reports')
-    .select('*')
-    .eq('inspector_id', inspectorId)
-    .order('submitted_at', { ascending: false });
-  if (error || !data) {
-    ({ data } = await CLOUD.client.from('reports').select('*').eq('owner_id', inspectorId).order('submitted_at', { ascending: false }));
-  }
-  return (data || []).map(mapReport);
-}
-
-async function cloudFetchVisitsForInspector(inspectorId) {
-  let { data, error } = await CLOUD.client
-    .from('visits')
-    .select('*')
-    .eq('inspector_id', inspectorId)
-    .order('visit_date', { ascending: true });
-  if (error || !data) {
-    ({ data } = await CLOUD.client.from('visits').select('*').eq('owner_id', inspectorId).order('visit_date', { ascending: true }));
-  }
-  return (data || []).map(mapVisit);
-}
-
-async function cloudFetchTicketsForTeacher(teacherId) {
-  const { data } = await CLOUD.client.from('tickets').select('*').eq('teacher_id', teacherId).order('created_at', { ascending: false });
-  return (data || []).map(mapTicket);
-}
-async function cloudFetchReportsForTeacher(teacherId) {
-  const { data } = await CLOUD.client.from('reports').select('*').eq('teacher_id', teacherId).order('submitted_at', { ascending: false });
-  return (data || []).map(mapReport);
-}
-async function cloudFetchVisitsForTeacher(teacherId) {
-  const { data } = await CLOUD.client.from('visits').select('*').eq('teacher_id', teacherId).order('visit_date', { ascending: true });
-  return (data || []).map(mapVisit);
-}
-
-async function cloudSignUpUser(email, password, metadata = {}) {
-  const client = CLOUD.signupClient || CLOUD.client;
-  const { data, error } = await client.auth.signUp({
-    email: normEmail(email),
-    password,
-    options: { data: metadata }
-  });
-  if (error) throw error;
+  if (profile) return profile;
+  const guessedRole = activeLoginRole || 'teacher';
+  const payload = { user_id: user.id, role: guessedRole, full_name: user.user_metadata?.full_name || user.email, email: (user.email || '').toLowerCase() };
+  const { error: upErr } = await SB.client.from('profiles').upsert(payload, { onConflict: 'user_id' });
+  if (upErr) throw upErr;
+  const { data } = await SB.client.from('profiles').select('*').eq('user_id', user.id).single();
   return data;
 }
 
-async function cloudEnsureInspectorProfile(authUser, inspectorPayload) {
-  const row = {
-    id: authUser.id,
-    full_name: inspectorPayload.name,
-    card_id: inspectorPayload.cardId,
-    share_code: inspectorPayload.shareCode || inspectorPayload.cardId || makeInviteCode(inspectorPayload.name),
-    region: inspectorPayload.region,
-    province: inspectorPayload.province,
-    district: inspectorPayload.district,
-    level: inspectorPayload.level,
-    email: inspectorPayload.email,
-  };
-  const { error } = await CLOUD.client.from('inspectors').upsert(row);
-  if (error) throw error;
-  return row;
-}
-
-async function cloudCreateTeacherAuth(teacher, inspectorId) {
-  const meta = { role: 'teacher', inspector_id: inspectorId, full_name: teacher.name };
-  const signed = await cloudSignUpUser(teacher.email, teacher.pass, meta);
-  return signed?.user || null;
-}
-
-async function cloudInsertTeacherRow(teacher, inspectorId, authUserId = null) {
-  const row = {
-    id: teacher.id || undefined,
-    owner_id: inspectorId,
-    inspector_id: inspectorId,
-    auth_user_id: authUserId,
-    full_name: teacher.name,
-    email: normEmail(teacher.email),
-    school: teacher.school,
-    grade: teacher.grade,
-    subject: teacher.subject || '',
-    color: teacher.color || COLORS[0],
-  };
-  const { data, error } = await CLOUD.client.from('teachers').upsert(row).select().single();
-  if (error) throw error;
-  return mapTeacher(data);
-}
-
-async function cloudUpdateTeacherRow(teacher) {
-  const row = {
-    full_name: teacher.name,
-    email: normEmail(teacher.email),
-    school: teacher.school,
-    grade: teacher.grade,
-    subject: teacher.subject || '',
-    color: teacher.color || COLORS[0],
-  };
-  const { data, error } = await CLOUD.client.from('teachers').update(row).eq('id', teacher.id).select().single();
-  if (error) throw error;
-  return mapTeacher(data);
-}
-
-async function cloudDeleteTeacherRow(teacherId) {
-  await CLOUD.client.from('visits').delete().eq('teacher_id', teacherId);
-  await CLOUD.client.from('reports').delete().eq('teacher_id', teacherId);
-  await CLOUD.client.from('tickets').delete().eq('teacher_id', teacherId);
-  const { error } = await CLOUD.client.from('teachers').delete().eq('id', teacherId);
-  if (error) throw error;
-}
-
-async function cloudInsertTicket(ticket) {
-  const row = {
-    id: ticket.id || undefined,
-    owner_id: ticket.inspectorId || ticket.ownerId,
-    inspector_id: ticket.inspectorId || ticket.ownerId,
-    teacher_id: ticket.teacherId,
-    teacher_name: ticket.teacherName,
-    school: ticket.school,
-    type: ticket.type,
-    title: ticket.title,
-    description: ticket.desc,
-    subject: ticket.subject || '',
-    unit: ticket.unit || '',
-    notes: ticket.notes || '',
-    preferred_date: ticket.preferredDate,
-    status: ticket.status,
-    inspector_note: ticket.inspectorNote || '',
-    created_at: ticket.createdAt || new Date().toISOString(),
-  };
-  const { data, error } = await CLOUD.client.from('tickets').insert(row).select().single();
-  if (error) throw error;
-  return mapTicket(data);
-}
-
-async function cloudUpdateTicket(ticket) {
-  const row = {
-    status: ticket.status,
-    inspector_note: ticket.inspectorNote || '',
-    preferred_date: ticket.preferredDate || null,
-  };
-  const { data, error } = await CLOUD.client.from('tickets').update(row).eq('id', ticket.id).select().single();
-  if (error) throw error;
-  return mapTicket(data);
-}
-
-async function cloudUpsertVisit(visit) {
-  const row = {
-    id: visit.id || undefined,
-    owner_id: visit.inspectorId || visit.ownerId,
-    inspector_id: visit.inspectorId || visit.ownerId,
-    teacher_id: visit.teacherId,
-    ticket_id: visit.ticketId || null,
-    visit_date: visit.date,
-    status: visit.status || 'scheduled',
-  };
-  const { data, error } = await CLOUD.client.from('visits').upsert(row).select().single();
-  if (error) throw error;
-  return mapVisit(data);
-}
-
-async function cloudDeleteVisitByTicket(ticketId) {
-  if (!ticketId) return;
-  await CLOUD.client.from('visits').delete().eq('ticket_id', ticketId);
-}
-
-async function cloudUploadReportFile(file, teacherId) {
-  if (!file) return { fileName: '', fileUrl: '', fileSize: 0 };
-  const clean = `${Date.now()}_${String(file.name || 'report').replace(/[^\w.\-]+/g, '_')}`;
-  const path = `${teacherId}/${clean}`;
+async function registerAccount() {
+  if (!SB.ready) { showToast('⚠ اربط Supabase أولاً'); openModal('modal-supabase-config'); return; }
+  const full_name = v('reg-name');
+  const email = v('reg-email').toLowerCase();
+  const password = document.getElementById('reg-pass')?.value || '';
+  if (!full_name || !email || password.length < 6) { showToast('⚠ أكمل البيانات الأساسية'); return; }
   try {
-    const { error: uploadError } = await CLOUD.client.storage.from('reports').upload(path, file, { upsert: true });
-    if (uploadError) throw uploadError;
-    const { data } = CLOUD.client.storage.from('reports').getPublicUrl(path);
-    return { fileName: file.name, fileUrl: data?.publicUrl || '', fileSize: file.size || 0 };
-  } catch {
-    return { fileName: file.name, fileUrl: '', fileSize: file.size || 0 };
+    const { data, error } = await SB.client.auth.signUp({ email, password, options: { data: { full_name, role: SB.registerRole } } });
+    if (error) throw error;
+    const user = data.user;
+    if (!user?.id) throw new Error('تعذر إنشاء المستخدم');
+    const { error: pErr } = await SB.client.from('profiles').upsert({ user_id:user.id, role:SB.registerRole, full_name, email }, { onConflict:'user_id' });
+    if (pErr) throw pErr;
+
+    if (SB.registerRole === 'inspector') {
+      await SB.client.from('inspector_settings').upsert({
+        user_id: user.id,
+        card_id: v('reg-card-id'),
+        region: v('reg-region'),
+        province: v('reg-province'),
+        district: v('reg-district'),
+        level: v('reg-level')
+      }, { onConflict:'user_id' });
+    } else {
+      const inspectorEmail = v('reg-inspector-email').toLowerCase();
+      const school = v('reg-school');
+      const grade = v('reg-grade');
+      const subject = v('reg-subject');
+      if (!inspectorEmail || !school || !grade) { showToast('⚠ أكمل بيانات الأستاذ'); return; }
+      const { data: inspProfile } = await SB.client.from('profiles').select('user_id').eq('email', inspectorEmail).eq('role','inspector').maybeSingle();
+      if (!inspProfile?.user_id) throw new Error('لم يتم العثور على بريد المفتش');
+      const { data: existingTeacher } = await SB.client.from('teachers').select('id,color').eq('email', email).eq('inspector_user_id', inspProfile.user_id).maybeSingle();
+      const payload = {
+        inspector_user_id: inspProfile.user_id,
+        teacher_user_id: user.id,
+        email,
+        full_name,
+        school,
+        grade,
+        subject,
+        color: existingTeacher?.color || COLORS[Math.floor(Math.random()*COLORS.length)],
+        status: 'active'
+      };
+      if (existingTeacher?.id) payload.id = existingTeacher.id;
+      const { error: tErr } = await SB.client.from('teachers').upsert(payload, { onConflict:'id' });
+      if (tErr) throw tErr;
+    }
+
+    closeModal('modal-auth-register');
+    showToast('✅ تم إنشاء الحساب. يمكنك تسجيل الدخول الآن.');
+  } catch (err) {
+    console.error(err);
+    showToast('❌ ' + (err.message || 'تعذر إنشاء الحساب'));
   }
 }
 
-async function cloudInsertReport(report) {
-  const row = {
-    id: report.id || undefined,
-    owner_id: report.inspectorId || report.ownerId,
-    inspector_id: report.inspectorId || report.ownerId,
-    teacher_id: report.teacherId,
-    teacher_name: report.teacherName,
-    school: report.school,
-    grade: report.grade,
-    title: report.title,
-    semester: report.semester || '',
-    subject: report.subject || '',
-    summary: report.summary || '',
-    file_name: report.fileName || '',
-    file_url: report.fileUrl || '',
-    file_size: report.fileSize || 0,
-    status: report.status || 'pending_review',
-    inspector_note: report.inspectorNote || '',
-    submitted_at: report.submittedAt || new Date().toISOString(),
-  };
-  const { data, error } = await CLOUD.client.from('reports').insert(row).select().single();
-  if (error) throw error;
-  return mapReport(data);
-}
-
-async function cloudUpdateReport(report) {
-  const row = {
-    status: report.status,
-    inspector_note: report.inspectorNote || '',
-  };
-  const { data, error } = await CLOUD.client.from('reports').update(row).eq('id', report.id).select().single();
-  if (error) throw error;
-  return mapReport(data);
-}
-
-function syncCurrentUserCache() {
-  saveAll();
-  save(KEYS.CURRENT_USER, APP.currentUser);
-}
-
-const _baseLogout = logout;
-logout = async function logoutSupabaseAware() {
-  APP.currentUser = null;
-  save(KEYS.CURRENT_USER, null);
-  await cloudSignOut();
-  showScreen('login');
-  const e1 = document.getElementById('login-email');
-  const e2 = document.getElementById('login-pass');
-  if (e1) e1.value = '';
-  if (e2) e2.value = '';
-};
-
-const _baseResetApp = resetApp;
-resetApp = async function resetAppSupabaseAware() {
-  if (!confirm('⚠ هل أنت متأكد من إعادة ضبط المنظومة المحلية؟ سيتم حذف التخزين المحلي فقط.')) return;
-  Object.values(KEYS).forEach(k => localStorage.removeItem(k));
-  await cloudSignOut();
-  location.reload();
-};
-
-launchApp = async function launchAppSupabaseAware() {
+async function launchApp() {
   const insp = {
-    id: genId(),
-    name: v('s-insp-name'),
-    cardId: v('s-insp-id'),
-    shareCode: (v('s-insp-id') || makeInviteCode(v('s-insp-name'))).toUpperCase(),
-    region: v('s-insp-region'),
+    id:       genId(),
+    name:     v('s-insp-name'),
+    cardId:   v('s-insp-id'),
+    region:   v('s-insp-region'),
     province: v('s-insp-province'),
     district: v('s-insp-district'),
-    level: v('s-insp-level'),
-    email: normEmail(v('s-insp-email')),
-    pass: v('s-insp-pass'),
+    level:    v('s-insp-level'),
+    email:    v('s-insp-email').toLowerCase(),
+    pass:     v('s-insp-pass'),
   };
-
-  APP.inspector = insp;
-  APP.teachers = setupTeachers.map(t => ({ ...t, email: normEmail(t.email) }));
-  APP.tickets = [];
-  APP.reports = [];
-  APP.visits = [];
-
-  if (!cloudOn()) {
+  if (!SB.ready) {
+    APP.inspector = insp;
+    APP.teachers = setupTeachers.map(t => ({ ...t }));
+    APP.tickets = [];
+    APP.reports = [];
+    APP.visits = [];
     saveAll();
     save(KEYS.SETUP_DONE, true);
     setupTeachers = [];
-    showToast('🎉 تم إطلاق المنظومة محلياً');
+    showToast('🎉 تم إطلاق المنظومة محلياً. لتمكين السحابة اربط Supabase.');
     setTimeout(() => showScreen('login'), 900);
     return;
   }
-
   try {
-    const signed = await cloudSignUpUser(insp.email, insp.pass, { role: 'inspector', full_name: insp.name });
-    const authUser = signed?.user;
-    if (!authUser) throw new Error('تعذر إنشاء حساب المفتش');
-
-    const signin = await CLOUD.client.auth.signInWithPassword({ email: insp.email, password: insp.pass });
-    if (signin.error) throw signin.error;
-
-    insp.id = authUser.id;
-    await cloudEnsureInspectorProfile(authUser, insp);
-    APP.inspector = { ...APP.inspector, ...insp };
-
-    const createdTeachers = [];
-    for (let i = 0; i < APP.teachers.length; i++) {
-      const teacher = { ...APP.teachers[i], color: APP.teachers[i].color || COLORS[i % COLORS.length] };
-      const tUser = await cloudCreateTeacherAuth(teacher, insp.id);
-      const inserted = await cloudInsertTeacherRow(teacher, insp.id, tUser?.id || null);
-      createdTeachers.push(inserted);
-      await sleep(120);
+    updateCloudStatus('سحابة: جارٍ إنشاء حساب المفتش...', 'warn');
+    const { data, error } = await SB.client.auth.signUp({ email: insp.email, password: insp.pass, options: { data: { full_name: insp.name, role: 'inspector' } } });
+    if (error) throw error;
+    const user = data.user;
+    if (!user?.id) throw new Error('تعذر إنشاء حساب المفتش');
+    await SB.client.from('profiles').upsert({ user_id:user.id, role:'inspector', full_name:insp.name, email:insp.email }, { onConflict:'user_id' });
+    await SB.client.from('inspector_settings').upsert({ user_id:user.id, card_id:insp.cardId, region:insp.region, province:insp.province, district:insp.district, level:insp.level }, { onConflict:'user_id' });
+    if (setupTeachers.length) {
+      const rows = setupTeachers.map((t, idx) => ({
+        inspector_user_id:user.id,
+        email:t.email.toLowerCase(),
+        full_name:t.name,
+        school:t.school,
+        grade:t.grade,
+        subject:t.subject,
+        color:t.color || COLORS[idx % COLORS.length],
+        status:'invited'
+      }));
+      const { error: terr } = await SB.client.from('teachers').insert(rows);
+      if (terr) throw terr;
     }
-    APP.teachers = createdTeachers;
-    APP.currentUser = { role: 'inspector', id: insp.id };
+    APP.inspector = insp;
     save(KEYS.SETUP_DONE, true);
-    syncCurrentUserCache();
     setupTeachers = [];
-    showToast('🎉 تم إطلاق المنظومة وربطها بـ Supabase');
-    enterInspector();
+    updateCloudStatus('سحابة: جاهزة', 'ok');
+    showToast('✅ تم إنشاء حساب المفتش سحابياً. سجل الدخول الآن.');
+    setTimeout(() => showScreen('login'), 900);
   } catch (err) {
     console.error(err);
-    saveAll();
-    save(KEYS.SETUP_DONE, true);
-    showToast('⚠ تم حفظ النسخة محلياً، لكن الربط السحابي لم يكتمل. تحقق من Auth وRLS وEmail Confirmations.');
-    setTimeout(() => showScreen('login'), 1100);
+    showToast('❌ ' + (err.message || 'تعذر إطلاق المنظومة على Supabase'));
   }
-};
+}
 
-handleLogin = async function handleLoginSupabaseAware(e) {
-  e.preventDefault();
-  const email = normEmail(document.getElementById('login-email')?.value);
-  const pass = document.getElementById('login-pass')?.value || '';
+async function handleLogin(evn) {
+  evn.preventDefault();
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
-  if (errEl) errEl.style.display = 'none';
 
-  if (cloudOn()) {
-    try {
-      const { error } = await CLOUD.client.auth.signInWithPassword({ email, password: pass });
-      if (error) throw error;
-      const user = await cloudGetAuthUser();
-      const roleData = await cloudResolveRole(user?.id);
-      if (!roleData) {
-        const meta = user?.user_metadata || {};
-        if (meta?.role === 'teacher') {
-          pendingTeacherProfile = {
-            authUserId: user.id,
-            email,
-            name: meta.full_name || '',
-            inspectorId: meta.inspector_id || '',
-            shareCode: meta.share_code || '',
-          };
-          document.getElementById('cp-name').value = pendingTeacherProfile.name || '';
-          document.getElementById('cp-email').value = pendingTeacherProfile.email || '';
-          document.getElementById('cp-code').value = pendingTeacherProfile.shareCode || '';
-          openModal('modal-complete-teacher-profile');
-          showToast('ℹ أكمل ملفك لربط حسابك بالمفتش');
-          return;
-        }
-        throw new Error('لا يوجد ملف مرتبط بهذا الحساب داخل الجداول');
+  if (!SB.ready) {
+    // fallback local login
+    if (activeLoginRole === 'inspector') {
+      if (APP.inspector && APP.inspector.email === email && APP.inspector.pass === pass) {
+        APP.currentUser = { role: 'inspector', id: APP.inspector.id };
+        save(KEYS.CURRENT_USER, APP.currentUser);
+        errEl.style.display = 'none';
+        enterInspector();
+        return;
       }
-      APP.currentUser = { role: roleData.role, id: roleData.appId };
-      save(KEYS.CURRENT_USER, APP.currentUser);
-      await cloudHydrate(roleData);
-      roleData.role === 'inspector' ? enterInspector() : enterTeacher(roleData.appId);
-      return;
-    } catch (err) {
-      console.error(err);
+    } else {
+      const teacher = APP.teachers.find(t => t.email.toLowerCase() === email && t.pass === pass);
+      if (teacher) {
+        APP.currentUser = { role: 'teacher', id: teacher.id };
+        save(KEYS.CURRENT_USER, APP.currentUser);
+        errEl.style.display = 'none';
+        enterTeacher(teacher.id);
+        return;
+      }
     }
-  }
-
-  const localInspector = APP.inspector && APP.inspector.email === email && APP.inspector.pass === pass;
-  if (localInspector) {
-    APP.currentUser = { role: 'inspector', id: APP.inspector.id };
-    save(KEYS.CURRENT_USER, APP.currentUser);
-    enterInspector();
+    errEl.style.display = 'block';
     return;
   }
-  const teacher = APP.teachers.find(t => normEmail(t.email) === email && t.pass === pass);
-  if (teacher) {
-    APP.currentUser = { role: 'teacher', id: teacher.id };
+
+  try {
+    updateCloudStatus('سحابة: جارٍ تسجيل الدخول...', 'warn');
+    const { data, error } = await SB.client.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+    const user = data.user;
+    const profile = await ensureProfileFromSession(user);
+    if (!profile) throw new Error('تعذر تحميل الملف الشخصي');
+    if (profile.role !== activeLoginRole) throw new Error('الدور المختار لا يطابق الحساب');
+
+    if (profile.role === 'teacher') {
+      await ensureTeacherLink(user, profile);
+    }
+
+    APP.currentUser = { role: profile.role, id: user.id };
     save(KEYS.CURRENT_USER, APP.currentUser);
-    enterTeacher(teacher.id);
+    await loadCloudState(profile.role, user);
+    errEl.style.display = 'none';
+    updateCloudStatus('سحابة: متصل', 'ok');
+    if (profile.role === 'inspector') enterInspector(); else enterTeacher(user.id);
+  } catch (err) {
+    console.error(err);
+    errEl.style.display = 'block';
+    errEl.textContent = err.message || 'تعذر تسجيل الدخول';
+    updateCloudStatus('سحابة: فشل الدخول', 'warn');
+  }
+}
+
+async function ensureTeacherLink(user, profile) {
+  let { data: teacher } = await SB.client.from('teachers').select('*').eq('teacher_user_id', user.id).maybeSingle();
+  if (teacher) return teacher;
+  const email = (user.email || profile.email || '').toLowerCase();
+  let { data: invited } = await SB.client.from('teachers').select('*').eq('email', email).is('teacher_user_id', null).maybeSingle();
+  if (invited?.id) {
+    const { error } = await SB.client.from('teachers').update({ teacher_user_id:user.id, status:'active', full_name: profile.full_name || invited.full_name }).eq('id', invited.id);
+    if (error) throw error;
+    return invited;
+  }
+  throw new Error('هذا الأستاذ غير مربوط بعد بأي مفتش. استعمل إنشاء حساب مع بريد المفتش أو اطلب من المفتش إضافتك.');
+}
+
+async function loadCloudState(role, user) {
+  if (!SB.ready || !user) return;
+  if (role === 'inspector') {
+    const [{ data: settings }, { data: teachers }, { data: tickets }, { data: reports }, { data: visits }, { data: profile }] = await Promise.all([
+      SB.client.from('inspector_settings').select('*').eq('user_id', user.id).maybeSingle(),
+      SB.client.from('teachers').select('*').eq('inspector_user_id', user.id).order('created_at', { ascending:true }),
+      SB.client.from('tickets').select('*').eq('inspector_user_id', user.id).order('created_at', { ascending:true }),
+      SB.client.from('reports').select('*').eq('inspector_user_id', user.id).order('submitted_at', { ascending:true }),
+      SB.client.from('visits').select('*').eq('inspector_user_id', user.id).order('date', { ascending:true }),
+      SB.client.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
+    ]);
+    APP.inspector = {
+      id: user.id,
+      name: profile?.full_name || user.user_metadata?.full_name || user.email,
+      email: (profile?.email || user.email || '').toLowerCase(),
+      cardId: settings?.card_id || '',
+      region: settings?.region || '',
+      province: settings?.province || '',
+      district: settings?.district || '',
+      level: settings?.level || ''
+    };
+    APP.teachers = (teachers || []).map(mapTeacherRow);
+    APP.tickets = (tickets || []).map(mapTicketRow);
+    APP.reports = (reports || []).map(mapReportRow);
+    APP.visits = (visits || []).map(mapVisitRow);
+    saveAll();
     return;
   }
-  if (errEl) errEl.style.display = 'block';
-};
 
-addTeacherFromModal = async function addTeacherFromModalSupabaseAware() {
+  const { data: teacherRow } = await SB.client.from('teachers').select('*').eq('teacher_user_id', user.id).maybeSingle();
+  if (!teacherRow?.id) throw new Error('لا توجد بطاقة أستاذ مرتبطة بهذا الحساب');
+  const [{ data: tickets }, { data: reports }, { data: visits }, { data: inspSettings }, { data: inspProfile }] = await Promise.all([
+    SB.client.from('tickets').select('*').eq('teacher_row_id', teacherRow.id).order('created_at', { ascending:true }),
+    SB.client.from('reports').select('*').eq('teacher_row_id', teacherRow.id).order('submitted_at', { ascending:true }),
+    SB.client.from('visits').select('*').eq('teacher_row_id', teacherRow.id).order('date', { ascending:true }),
+    SB.client.from('inspector_settings').select('*').eq('user_id', teacherRow.inspector_user_id).maybeSingle(),
+    SB.client.from('profiles').select('*').eq('user_id', teacherRow.inspector_user_id).maybeSingle(),
+  ]);
+  APP.inspector = {
+    id: teacherRow.inspector_user_id,
+    name: inspProfile?.full_name || 'المفتش',
+    email: inspProfile?.email || '',
+    cardId: inspSettings?.card_id || '',
+    region: inspSettings?.region || '',
+    province: inspSettings?.province || '',
+    district: inspSettings?.district || '',
+    level: inspSettings?.level || ''
+  };
+  APP.teachers = [mapTeacherRow(teacherRow)];
+  APP.tickets = (tickets || []).map(mapTicketRow);
+  APP.reports = (reports || []).map(mapReportRow);
+  APP.visits = (visits || []).map(mapVisitRow);
+  saveAll();
+}
+
+function mapTeacherRow(r) {
+  return {
+    id: r.id,
+    cloudId: r.id,
+    userId: r.teacher_user_id || null,
+    inspectorUserId: r.inspector_user_id,
+    name: r.full_name,
+    email: r.email,
+    school: r.school,
+    grade: r.grade,
+    subject: r.subject,
+    color: r.color || COLORS[0],
+    status: r.status || 'active'
+  };
+}
+function mapTicketRow(r) {
+  return {
+    id: r.id,
+    cloudId: r.id,
+    teacherId: r.teacher_row_id,
+    teacherName: r.teacher_name,
+    school: r.school,
+    type: r.type,
+    title: r.title,
+    desc: r.description,
+    subject: r.subject,
+    unit: r.unit,
+    notes: r.notes,
+    preferredDate: r.preferred_date,
+    status: r.status,
+    inspectorNote: r.inspector_note || '',
+    createdAt: r.created_at,
+  };
+}
+function mapReportRow(r) {
+  return {
+    id: r.id,
+    cloudId: r.id,
+    teacherId: r.teacher_row_id,
+    teacherName: r.teacher_name,
+    school: r.school,
+    grade: r.grade,
+    title: r.title,
+    semester: r.semester,
+    subject: r.subject,
+    summary: r.summary,
+    fileName: r.file_name || '',
+    fileSize: r.file_size || 0,
+    filePath: r.file_path || '',
+    status: r.status,
+    inspectorNote: r.inspector_note || '',
+    submittedAt: r.submitted_at,
+  };
+}
+function mapVisitRow(r) {
+  return { id:r.id, ticketId:r.ticket_id, teacherId:r.teacher_row_id, date:r.date, status:r.status };
+}
+
+async function enterInspector() {
+  if (SB.ready && APP.currentUser?.role === 'inspector') {
+    try { const { data:{ user } } = await SB.client.auth.getUser(); if (user) await loadCloudState('inspector', user); } catch(e) { console.error(e); }
+  }
+  showScreen('inspector');
+  setText('insp-district-label', APP.inspector?.district || '—');
+  setText('insp-name-sb', APP.inspector?.name || '—');
+  setText('insp-avatar-sb', initial(APP.inspector?.name || 'م'));
+  iTab('i-overview', document.querySelector('[data-tab="i-overview"]'));
+  renderInspectorOverview();
+}
+
+async function enterTeacher(teacherId) {
+  if (SB.ready && APP.currentUser?.role === 'teacher') {
+    try { const { data:{ user } } = await SB.client.auth.getUser(); if (user) await loadCloudState('teacher', user); teacherId = APP.teachers[0]?.id || teacherId; } catch(e) { console.error(e); }
+  }
+  showScreen('teacher');
+  const teacher = APP.teachers.find(t => t.id === teacherId) || APP.teachers[0];
+  if (!teacher) return;
+  setText('t-school-label', teacher.school || '—');
+  setText('t-name-sb', teacher.name || '—');
+  setText('t-avatar-sb', initial(teacher.name || 'أ'));
+  tTab('t-home', document.querySelector('[data-tab="t-home"]'));
+}
+
+async function addTeacherFromModal() {
   const name = v('m-t-name');
-  const email = normEmail(v('m-t-email'));
+  const email = v('m-t-email').toLowerCase();
   const pass = v('m-t-pass');
   const school = v('m-t-school');
   const grade = v('m-t-grade');
   const subject = v('m-t-subject');
-
-  if (!name || !email || !pass || !school || !grade) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
+  if (!name || !email || !school || !grade) { showToast('⚠ يُرجى ملء الحقول الإلزامية'); return; }
+  if (!SB.ready) {
+    // local fallback
+    const teacher = { id: genId(), name, email, pass, school, grade, subject, color: COLORS[APP.teachers.length % COLORS.length] };
+    APP.teachers.push(teacher); saveAll(); closeModal('modal-add-teacher'); renderTeachers(); renderInspectorOverview(); showToast('✅ تمت إضافة الأستاذ'); return;
   }
-  if (APP.teachers.find(t => normEmail(t.email) === email) || (APP.inspector && normEmail(APP.inspector.email) === email)) {
-    showToast('⚠ هذا البريد الإلكتروني مسجل بالفعل');
-    return;
-  }
-
-  const teacher = {
-    id: genId(), name, email, pass, school, grade, subject,
-    color: COLORS[APP.teachers.length % COLORS.length],
-    inspectorId: APP.inspector?.id || null,
-    ownerId: APP.inspector?.id || null,
-  };
-
   try {
-    if (cloudOn() && APP.currentUser?.role === 'inspector') {
-      const tUser = await cloudCreateTeacherAuth(teacher, APP.inspector.id);
-      const inserted = await cloudInsertTeacherRow(teacher, APP.inspector.id, tUser?.id || null);
-      APP.teachers.push(inserted);
-    } else {
-      APP.teachers.push(teacher);
-    }
-    syncCurrentUserCache();
+    const payload = {
+      inspector_user_id: APP.currentUser.id,
+      email, full_name:name, school, grade, subject,
+      color: COLORS[APP.teachers.length % COLORS.length],
+      status: 'invited'
+    };
+    const { data, error } = await SB.client.from('teachers').insert(payload).select().single();
+    if (error) throw error;
+    APP.teachers.push(mapTeacherRow(data));
     closeModal('modal-add-teacher');
-    clearFields(['m-t-name','m-t-email','m-t-pass','m-t-school','m-t-grade','m-t-subject']);
-    renderTeachers();
-    renderInspectorOverview();
-    showToast(`✅ تمت إضافة الأستاذ(ة) ${name}`);
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر إضافة الأستاذ. تأكد من SQL patch وAuth.');
-  }
-};
+    ['m-t-name','m-t-email','m-t-pass','m-t-school','m-t-grade','m-t-subject'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+    renderTeachers(); renderInspectorOverview(); showToast('✅ تمت إضافة الأستاذ سحابياً');
+  } catch (err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر إضافة الأستاذ')); }
+}
 
-saveTeacherEdit = async function saveTeacherEditSupabaseAware() {
+async function saveTeacherEdit() {
   const idx = APP.teachers.findIndex(t => t.id === activeTeacherId);
   if (idx === -1) return;
-  const email = normEmail(v('e-t-email'));
-  if (!v('e-t-name') || !email || !v('e-t-school') || !v('e-t-grade')) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
-  }
-  if (APP.teachers.some((t, i) => i !== idx && normEmail(t.email) === email) || (APP.inspector && normEmail(APP.inspector.email) === email)) {
-    showToast('⚠ هذا البريد الإلكتروني مستعمل');
-    return;
-  }
-
-  const updatedTeacher = {
-    ...APP.teachers[idx],
-    name: v('e-t-name'),
-    email,
-    school: v('e-t-school'),
-    grade: v('e-t-grade'),
-    subject: v('e-t-subject'),
-  };
-
+  const email = v('e-t-email').toLowerCase();
+  if (!v('e-t-name') || !email || !v('e-t-school') || !v('e-t-grade')) { showToast('⚠ يُرجى ملء الحقول الإلزامية'); return; }
   try {
-    APP.teachers[idx] = cloudOn() ? await cloudUpdateTeacherRow(updatedTeacher) : updatedTeacher;
-    APP.tickets.forEach(t => { if (t.teacherId === activeTeacherId) { t.teacherName = updatedTeacher.name; t.school = updatedTeacher.school; } });
-    APP.reports.forEach(r => { if (r.teacherId === activeTeacherId) { r.teacherName = updatedTeacher.name; r.school = updatedTeacher.school; r.grade = updatedTeacher.grade; } });
-    syncCurrentUserCache();
-    closeModal('modal-edit-teacher');
-    renderTeachers();
-    renderInspectorOverview();
-    if (v('e-t-pass')) {
-      showToast('✅ تم حفظ التعديلات. تغيير كلمة مرور الأستاذ يحتاج إعادة تعيين عبر البريد أو خدمة إدارية.');
+    if (SB.ready) {
+      const payload = {
+        full_name: v('e-t-name'), email, school:v('e-t-school'), grade:v('e-t-grade'), subject:v('e-t-subject')
+      };
+      const { data, error } = await SB.client.from('teachers').update(payload).eq('id', activeTeacherId).select().single();
+      if (error) throw error;
+      APP.teachers[idx] = mapTeacherRow(data);
     } else {
-      showToast('✅ تم حفظ التعديلات');
+      APP.teachers[idx].name = v('e-t-name'); APP.teachers[idx].email = email; APP.teachers[idx].school = v('e-t-school'); APP.teachers[idx].grade = v('e-t-grade'); APP.teachers[idx].subject = v('e-t-subject');
     }
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر حفظ التعديلات');
-  }
-};
+    APP.tickets.forEach(t => { if (t.teacherId === activeTeacherId) { t.teacherName = APP.teachers[idx].name; t.school = APP.teachers[idx].school; } });
+    APP.reports.forEach(r => { if (r.teacherId === activeTeacherId) { r.teacherName = APP.teachers[idx].name; r.school = APP.teachers[idx].school; r.grade = APP.teachers[idx].grade; } });
+    saveAll(); closeModal('modal-edit-teacher'); renderTeachers(); renderInspectorOverview(); showToast('✅ تم حفظ التعديلات');
+  } catch(err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر حفظ التعديلات')); }
+}
 
-deleteTeacher = async function deleteTeacherSupabaseAware() {
+async function deleteTeacher() {
   const teacher = APP.teachers.find(t => t.id === activeTeacherId);
   if (!teacher) return;
   if (!confirm(`هل تريد حذف الأستاذ(ة) ${teacher.name}؟`)) return;
-
   try {
-    if (cloudOn()) await cloudDeleteTeacherRow(activeTeacherId);
+    if (SB.ready) {
+      await SB.client.from('visits').delete().eq('teacher_row_id', activeTeacherId);
+      await SB.client.from('reports').delete().eq('teacher_row_id', activeTeacherId);
+      await SB.client.from('tickets').delete().eq('teacher_row_id', activeTeacherId);
+      const { error } = await SB.client.from('teachers').delete().eq('id', activeTeacherId);
+      if (error) throw error;
+    }
     APP.teachers = APP.teachers.filter(t => t.id !== activeTeacherId);
     APP.tickets = APP.tickets.filter(t => t.teacherId !== activeTeacherId);
     APP.reports = APP.reports.filter(r => r.teacherId !== activeTeacherId);
     APP.visits = APP.visits.filter(v => v.teacherId !== activeTeacherId);
-    syncCurrentUserCache();
-    closeModal('modal-edit-teacher');
-    renderTeachers();
-    renderInspectorOverview();
-    showToast('🗑️ تم حذف الأستاذ وبياناته التطبيقية. حساب الدخول في Auth يبقى بحاجة حذف إداري من لوحة Supabase.');
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر حذف الأستاذ');
-  }
-};
+    saveAll(); closeModal('modal-edit-teacher'); renderTeachers(); renderInspectorOverview(); showToast('🗑️ تم حذف الأستاذ');
+  } catch(err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر حذف الأستاذ')); }
+}
 
-submitRequest = async function submitRequestSupabaseAware() {
+async function submitRequest() {
   const title = v('req-title');
-  const date = v('req-date');
   const desc = v('req-desc');
-  if (!title || !date || !desc) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
-  }
-  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id);
+  const date = v('req-date');
+  if (!title || !desc) { showToast('⚠ أكمل عنوان الطلب وشرحه'); return; }
+  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id) || APP.teachers[0];
   if (!teacher) return;
-
   const ticket = {
-    id: genId(),
-    teacherId: teacher.id,
-    teacherName: teacher.name,
-    school: teacher.school,
-    type: selectedRequestType,
-    title,
-    desc,
-    subject: v('req-subject'),
-    unit: v('req-unit'),
-    notes: v('req-notes'),
-    preferredDate: date,
-    status: 'pending',
-    inspectorNote: '',
-    createdAt: new Date().toISOString(),
-    ownerId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-    inspectorId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
+    id: genId(), teacherId: teacher.id, teacherName: teacher.name, school: teacher.school, type: selectedRequestType,
+    title, desc, subject:v('req-subject'), unit:v('req-unit'), notes:v('req-notes'), preferredDate:date, status:'pending', inspectorNote:'', createdAt:new Date().toISOString()
   };
-
   try {
-    const finalTicket = cloudOn() ? await cloudInsertTicket(ticket) : ticket;
-    APP.tickets.unshift(finalTicket);
-    syncCurrentUserCache();
-    clearRequestForm();
-    showToast('✅ تم إرسال طلبك بنجاح');
-    tTab('t-home', document.querySelector('[data-tab="t-home"]'));
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر إرسال الطلب');
-  }
-};
+    if (SB.ready) {
+      const payload = {
+        inspector_user_id: teacher.inspectorUserId || APP.inspector.id,
+        teacher_row_id: teacher.id,
+        teacher_user_id: APP.currentUser.id,
+        teacher_name: teacher.name,
+        school: teacher.school,
+        type: selectedRequestType,
+        title, description: desc,
+        subject: v('req-subject'), unit: v('req-unit'), notes: v('req-notes'), preferred_date: date || null,
+        status:'pending'
+      };
+      const { data, error } = await SB.client.from('tickets').insert(payload).select().single();
+      if (error) throw error;
+      APP.tickets.push(mapTicketRow(data));
+    } else {
+      APP.tickets.push(ticket); saveAll();
+    }
+    clearRequestForm(); renderTeacherHome(teacher); showToast('✅ تم إرسال طلبك بنجاح.'); tTab('t-home', document.querySelector('[data-tab="t-home"]'));
+  } catch(err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر إرسال الطلب')); }
+}
 
-respondTicket = async function respondTicketSupabaseAware(newStatus) {
+async function respondTicket(newStatus) {
   const idx = APP.tickets.findIndex(t => t.id === activeTicketId);
   if (idx === -1) return;
+  const ticket = APP.tickets[idx];
   const note = document.getElementById('ticket-inspector-note')?.value || '';
-  APP.tickets[idx].status = newStatus;
-  APP.tickets[idx].inspectorNote = note;
+  const scheduleDate = document.getElementById('ticket-schedule-date')?.value || '';
   try {
-    const updated = cloudOn() ? await cloudUpdateTicket(APP.tickets[idx]) : APP.tickets[idx];
-    APP.tickets[idx] = updated;
-
-    if (newStatus === 'inprogress' && APP.tickets[idx].preferredDate) {
-      const visit = {
-        id: genId(),
-        ticketId: APP.tickets[idx].id,
-        teacherId: APP.tickets[idx].teacherId,
-        date: APP.tickets[idx].preferredDate,
-        status: 'scheduled',
-        ownerId: APP.tickets[idx].inspectorId || APP.tickets[idx].ownerId || APP.inspector?.id,
-        inspectorId: APP.tickets[idx].inspectorId || APP.tickets[idx].ownerId || APP.inspector?.id,
-      };
-      const storedVisit = cloudOn() ? await cloudUpsertVisit(visit) : visit;
-      const existingIdx = APP.visits.findIndex(v => v.ticketId === visit.ticketId);
-      if (existingIdx >= 0) APP.visits[existingIdx] = storedVisit; else APP.visits.push(storedVisit);
+    if (SB.ready) {
+      const { data: updated, error } = await SB.client.from('tickets').update({ status:newStatus, inspector_note:note, updated_at:new Date().toISOString() }).eq('id', ticket.id).select().single();
+      if (error) throw error;
+      APP.tickets[idx] = mapTicketRow(updated);
+      if (scheduleDate && ['visit','accomp'].includes(ticket.type) && (newStatus === 'inprogress' || newStatus === 'closed')) {
+        const existingVisit = APP.visits.find(v => v.ticketId === ticket.id);
+        const payload = {
+          inspector_user_id: APP.currentUser.id,
+          ticket_id: ticket.id,
+          teacher_row_id: ticket.teacherId,
+          teacher_user_id: APP.teachers.find(t => t.id === ticket.teacherId)?.userId || null,
+          date: scheduleDate,
+          status: newStatus === 'closed' ? 'done' : 'scheduled'
+        };
+        if (existingVisit) {
+          const { data: vdata, error: verr } = await SB.client.from('visits').update(payload).eq('id', existingVisit.id).select().single();
+          if (verr) throw verr;
+          const vi = APP.visits.findIndex(v => v.id === existingVisit.id); if (vi >= 0) APP.visits[vi] = mapVisitRow(vdata);
+        } else {
+          const { data: vdata, error: verr } = await SB.client.from('visits').insert(payload).select().single();
+          if (verr) throw verr;
+          APP.visits.push(mapVisitRow(vdata));
+        }
+      }
+    } else {
+      ticket.status = newStatus; ticket.inspectorNote = note;
+      if (scheduleDate && ['visit','accomp'].includes(ticket.type) && (newStatus === 'inprogress' || newStatus === 'closed')) {
+        let visit = APP.visits.find(v => v.ticketId === ticket.id);
+        if (!visit) { visit = { id: genId(), ticketId: ticket.id, teacherId: ticket.teacherId, date: scheduleDate, status: 'scheduled' }; APP.visits.push(visit); }
+        else { visit.date = scheduleDate; visit.status = newStatus === 'closed' ? 'done' : 'scheduled'; }
+      }
+      saveAll();
     }
+    closeModal('modal-ticket'); renderTickets(); renderInspectorOverview(); showToast('✅ تم تحديث الطلب');
+  } catch(err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر تحديث الطلب')); }
+}
 
-    if (newStatus === 'closed') {
-      APP.visits = APP.visits.filter(v => v.ticketId !== APP.tickets[idx].id);
-      if (cloudOn()) await cloudDeleteVisitByTicket(APP.tickets[idx].id);
-    }
-
-    syncCurrentUserCache();
-    closeModal('modal-ticket');
-    renderTickets();
-    renderInspectorOverview();
-    showToast(newStatus === 'closed' ? '✅ تم إغلاق الطلب' : '✅ تم تحديث حالة الطلب');
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر تحديث الطلب');
-  }
-};
-
-uploadReport = async function uploadReportSupabaseAware() {
-  const title = v('rpt-title');
-  const semester = v('rpt-semester');
-  const subject = v('rpt-subject');
-  const summary = v('rpt-summary');
-  if (!title) { showToast('⚠ يُرجى إدخال عنوان التقرير'); return; }
-
-  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id);
-  if (!teacher) return;
-
-  try {
-    const fileInfo = cloudOn() ? await cloudUploadReportFile(document.getElementById('rpt-file')?.files?.[0] || null, teacher.id) : { fileName: reportAttachment?.name || '', fileUrl: '', fileSize: reportAttachment?.size || 0 };
-    const report = {
-      id: genId(),
-      teacherId: teacher.id,
-      teacherName: teacher.name,
-      school: teacher.school,
-      grade: teacher.grade,
-      title,
-      semester,
-      subject,
-      summary,
-      fileName: fileInfo.fileName,
-      fileUrl: fileInfo.fileUrl,
-      fileSize: fileInfo.fileSize,
-      status: 'pending_review',
-      inspectorNote: '',
-      submittedAt: new Date().toISOString(),
-      ownerId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-      inspectorId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-    };
-    const finalReport = cloudOn() ? await cloudInsertReport(report) : report;
-    APP.reports.unshift(finalReport);
-    syncCurrentUserCache();
-    closeModal('modal-upload-report');
-    clearFields(['rpt-title','rpt-subject','rpt-summary']);
-    const fi = document.getElementById('rpt-file'); if (fi) fi.value = '';
-    reportAttachment = null;
-    setText('rpt-file-name', 'لم يتم اختيار ملف');
-    renderTeacherReports(teacher);
-    renderTeacherHome(teacher);
-    showToast(finalReport.fileUrl ? '✅ تم رفع التقرير والملف' : '✅ تم رفع التقرير');
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر رفع التقرير');
-  }
-};
-
-respondReport = async function respondReportSupabaseAware(newStatus) {
+async function respondReport(newStatus) {
   const idx = APP.reports.findIndex(r => r.id === activeReportId);
   if (idx === -1) return;
   const note = document.getElementById('report-inspector-note')?.value || '';
-  APP.reports[idx].status = newStatus;
-  APP.reports[idx].inspectorNote = note;
   try {
-    APP.reports[idx] = cloudOn() ? await cloudUpdateReport(APP.reports[idx]) : APP.reports[idx];
-    syncCurrentUserCache();
-    closeModal('modal-report-review');
-    renderInspectorReports();
-    renderInspectorOverview();
-    showToast(newStatus === 'approved' ? '✅ تم اعتماد التقرير' : '❌ تم رفض التقرير');
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر تحديث التقرير');
-  }
-};
-
-exportData = async function exportDataSupabaseAware() {
-  if (cloudOn() && APP.currentUser) {
-    try { await cloudHydrate(); } catch {}
-  }
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    mode: cloudOn() ? 'supabase+local-cache' : 'local-only',
-    inspector: APP.inspector,
-    teachers: APP.teachers,
-    tickets: APP.tickets,
-    reports: APP.reports,
-    visits: APP.visits,
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `inspection_backup_${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  showToast('✅ تم إنشاء نسخة احتياطية');
-};
-
-importData = function importDataSupabaseAware(ev) {
-  const file = ev?.target?.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
-      const data = JSON.parse(reader.result);
-      if (!data || (!data.inspector && !Array.isArray(data.teachers))) throw new Error('bad');
-      APP.inspector = data.inspector || null;
-      APP.teachers = data.teachers || [];
-      APP.tickets = data.tickets || [];
-      APP.reports = data.reports || [];
-      APP.visits = data.visits || [];
-      saveAll();
-      if (APP.currentUser?.role === 'inspector') {
-        renderInspectorOverview(); renderTeachers(); renderTickets(); renderInspectorReports();
-      }
-      showToast('✅ تم استيراد النسخة الاحتياطية محلياً');
-    } catch (err) {
-      console.error(err);
-      showToast('❌ ملف النسخة الاحتياطية غير صالح');
-    } finally {
-      if (ev.target) ev.target.value = '';
-    }
-  };
-  reader.readAsText(file, 'utf-8');
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  const pwd = document.getElementById('s-insp-pass');
-  if (pwd) pwd.setAttribute('minlength', '6');
-
-  if (cloudOn()) {
-    CLOUD.client.auth.onAuthStateChange(async (event) => {
-      if (event === 'SIGNED_OUT') {
-        APP.currentUser = null;
-        save(KEYS.CURRENT_USER, null);
-      }
-    });
-
-    setTimeout(async () => {
-      try {
-        const restored = await cloudRestoreRoute();
-        if (!restored && load(KEYS.SETUP_DONE, false) && !APP.currentUser) showScreen('login');
-      } catch (err) {
-        console.error(err);
-      }
-    }, 50);
-  }
-});
-
-
-async function selfRegisterTeacher() {
-  const name = v('sr-name');
-  const email = normEmail(v('sr-email'));
-  const pass = v('sr-pass');
-  const school = v('sr-school');
-  const grade = v('sr-grade');
-  const subject = v('sr-subject');
-  const shareCode = String(v('sr-code') || '').trim().toUpperCase();
-
-  if (!name || !email || !pass || !school || !grade || !shareCode) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
-  }
-  if (pass.length < 6) {
-    showToast('⚠ كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-    return;
-  }
-  if (!cloudOn()) {
-    showToast('⚠ التسجيل الذاتي يحتاج تفعيل Supabase');
-    return;
-  }
-
-  try {
-    const inspector = await cloudFindInspectorByShareCode(shareCode);
-    if (!inspector?.id) throw new Error('invalid_invite_code');
-
-    const signed = await CLOUD.client.auth.signUp({
-      email,
-      password: pass,
-      options: {
-        data: {
-          role: 'teacher',
-          full_name: name,
-          inspector_id: inspector.id,
-          share_code: shareCode,
-        }
-      }
-    });
-    if (signed.error) throw signed.error;
-
-    let authUser = signed.data?.user || null;
-    if (!signed.data?.session) {
-      const signedIn = await CLOUD.client.auth.signInWithPassword({ email, password: pass });
-      if (!signedIn.error) authUser = signedIn.data?.user || authUser;
-    }
-
-    if (!authUser?.id) {
-      closeModal('modal-self-register-teacher');
-      clearFields(['sr-name','sr-email','sr-pass','sr-school','sr-grade','sr-subject','sr-code']);
-      showToast('✅ تم إنشاء الحساب. أكّد بريدك ثم سجّل الدخول لإكمال الربط.');
-      return;
-    }
-
-    const teacher = await cloudInsertTeacherRow({
-      id: genId(),
-      name, email, school, grade, subject,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)]
-    }, inspector.id, authUser.id);
-
-    APP.currentUser = { role: 'teacher', id: teacher.id };
-    save(KEYS.CURRENT_USER, APP.currentUser);
-    await cloudHydrate({ role: 'teacher', appId: teacher.id, teacher });
-    closeModal('modal-self-register-teacher');
-    clearFields(['sr-name','sr-email','sr-pass','sr-school','sr-grade','sr-subject','sr-code']);
-    showToast('🎉 تم التسجيل والدخول بنجاح');
-    enterTeacher(teacher.id);
-  } catch (err) {
-    console.error(err);
-    const msg = String(err?.message || '');
-    if (msg.includes('User already registered')) {
-      showToast('⚠ هذا البريد مسجل من قبل. سجّل الدخول مباشرة أو أكمل ملفك.');
-    } else if (msg.includes('invalid_invite_code')) {
-      showToast('❌ رمز الدعوة غير صحيح');
+    if (SB.ready) {
+      const { data, error } = await SB.client.from('reports').update({ status:newStatus, inspector_note:note, updated_at:new Date().toISOString() }).eq('id', activeReportId).select().single();
+      if (error) throw error;
+      APP.reports[idx] = mapReportRow(data);
     } else {
-      showToast('❌ تعذر إتمام التسجيل');
+      APP.reports[idx].status = newStatus; APP.reports[idx].inspectorNote = note; saveAll();
     }
-  }
+    closeModal('modal-report-review'); renderInspectorReports(); renderInspectorOverview(); showToast(newStatus === 'approved' ? '✅ تم اعتماد التقرير' : '❌ تم رفض التقرير');
+  } catch(err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر تحديث التقرير')); }
 }
 
-async function completeTeacherProfile() {
-  const payload = pendingTeacherProfile || {};
-  const name = v('cp-name') || payload.name;
-  const email = normEmail(v('cp-email') || payload.email);
-  const school = v('cp-school');
-  const grade = v('cp-grade');
-  const subject = v('cp-subject');
-  const shareCode = String(v('cp-code') || payload.shareCode || '').trim().toUpperCase();
-
-  if (!name || !email || !school || !grade || !shareCode) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
-  }
-  try {
-    const inspector = payload.inspectorId ? { id: payload.inspectorId } : await cloudFindInspectorByShareCode(shareCode);
-    if (!inspector?.id) throw new Error('invalid_invite_code');
-    const authUser = await cloudGetAuthUser();
-    if (!authUser?.id) throw new Error('no_auth_user');
-
-    let existing = await cloudFetchTeacherByAuthUserId(authUser.id);
-    if (!existing) existing = await cloudFetchTeacherByEmail(email);
-
-    let teacher;
-    if (existing?.id) {
-      teacher = await cloudUpdateTeacherRow({
-        ...existing,
-        name,
-        email,
-        school,
-        grade,
-        subject,
-      });
-    } else {
-      teacher = await cloudInsertTeacherRow({
-        id: genId(),
-        name, email, school, grade, subject,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)]
-      }, inspector.id, authUser.id);
-    }
-
-    pendingTeacherProfile = null;
-    APP.currentUser = { role: 'teacher', id: teacher.id };
-    save(KEYS.CURRENT_USER, APP.currentUser);
-    await cloudHydrate({ role: 'teacher', appId: teacher.id, teacher });
-    closeModal('modal-complete-teacher-profile');
-    showToast('✅ تم إكمال ملف الأستاذ');
-    enterTeacher(teacher.id);
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر إكمال الملف');
-  }
-}
-
-
-/* ══════════════════════════════════════════════════════════
-   Advanced Supabase Layer v2
-   - academic year
-   - stronger invite flow
-   - stronger filters
-   - clearer admin tracking
-   - richer teacher dossier
-══════════════════════════════════════════════════════════ */
-
-const ADV = {
-  teachers: { q: '', year: 'all', status: 'all' },
-  tickets: { q: '', year: 'all', status: 'all', type: 'all' },
-  reports: { q: '', year: 'all', status: 'all', yearAcademic: 'all' },
-};
-
-function currentAcademicYear(date = new Date()) {
-  const d = new Date(date);
-  const y = d.getFullYear();
-  const start = d.getMonth() >= 8 ? y : y - 1;
-  return `${start}-${start + 1}`;
-}
-function academicYearsFromApp() {
-  const years = new Set([currentAcademicYear()]);
-  [APP.teachers, APP.tickets, APP.reports, APP.visits].forEach(arr => (arr || []).forEach(it => {
-    const y = it?.academicYear || it?.academic_year;
-    if (y) years.add(y);
-  }));
-  return [...years].sort().reverse();
-}
-function optAcademicYears(selected='') {
-  return academicYearsFromApp().map(y => `<option value="${e(y)}" ${selected===y?'selected':''}>${e(y)}</option>`).join('');
-}
-function teacherStatusLabel(v='active') {
-  return ({ active:'نشط', invited:'دعوة معلقة', suspended:'معلّق', archived:'مؤرشف' })[v] || 'نشط';
-}
-function teacherStatusClass(v='active') {
-  return v==='active' ? 'ts-active' : v==='invited' ? 'ts-invited' : v==='suspended' ? 'ts-suspended' : 'ts-archived';
-}
-function ensureSelectField(id, label, optionsHtml, parentSelector, afterInputId=null) {
-  if (document.getElementById(id)) return;
-  const parent = document.querySelector(parentSelector);
-  if (!parent) return;
-  const wrap = document.createElement('div');
-  wrap.className = 'form-group';
-  wrap.innerHTML = `<label class="form-label">${label}</label><select class="form-input" id="${id}">${optionsHtml}</select>`;
-  if (afterInputId) {
-    const anchor = document.getElementById(afterInputId)?.closest('.form-group');
-    if (anchor && anchor.parentNode === parent) anchor.insertAdjacentElement('afterend', wrap);
-    else parent.appendChild(wrap);
-  } else {
-    parent.appendChild(wrap);
-  }
-}
-function ensureNoticeText(targetSelector, html) {
-  const t = document.querySelector(targetSelector);
-  if (!t) return;
-  t.innerHTML = html;
-}
-function ensureDashboardEnhancements() {
-  // overview share card
-  if (!document.getElementById('share-invite-card')) {
-    const host = document.getElementById('activity-section');
-    if (host && host.parentNode) {
-      const card = document.createElement('div');
-      card.className = 'section-card';
-      card.id = 'share-invite-card';
-      card.innerHTML = `
-        <div class="card-hd">
-          <h3 class="card-title">دعوات وربط الأساتذة</h3>
-          <div class="inline-actions">
-            <button class="btn-secondary" id="share-invite-btn" onclick="copyShareInvite()">نسخ دعوة المفتش</button>
-          </div>
-        </div>
-        <div class="invite-hero">
-          <div>
-            <div class="invite-hero-title">رمز المفتش العام</div>
-            <div class="invite-hero-sub">يصلح للتسجيل الحر أو كخيار احتياطي.</div>
-          </div>
-          <div class="invite-code-chip" id="inspector-share-code-chip">—</div>
-        </div>
-        <div class="invite-grid" id="invite-grid"></div>`;
-      host.parentNode.insertBefore(card, host);
-    }
-  }
-
-  // filters teachers
-  if (!document.getElementById('teachers-advanced-filters')) {
-    const searchWrap = document.querySelector('#tab-i-teachers .search-bar-wrap');
-    if (searchWrap && searchWrap.parentNode) {
-      const div = document.createElement('div');
-      div.className = 'advanced-filters';
-      div.id = 'teachers-advanced-filters';
-      div.innerHTML = `
-        <select class="filter-input" id="tf-year" onchange="updateTeachersAdvancedFilters()"><option value="all">كل المواسم</option>${optAcademicYears()}</select>
-        <select class="filter-input" id="tf-status" onchange="updateTeachersAdvancedFilters()">
-          <option value="all">كل الحالات</option>
-          <option value="active">نشط</option>
-          <option value="invited">دعوة معلقة</option>
-          <option value="suspended">معلّق</option>
-        </select>`;
-      searchWrap.parentNode.insertBefore(div, searchWrap.nextSibling);
-    }
-  }
-
-  // filters tickets
-  if (!document.getElementById('tickets-advanced-filters')) {
-    const host = document.querySelector('#tab-i-tickets .page-header');
-    if (host && host.parentNode) {
-      const div = document.createElement('div');
-      div.className = 'advanced-filters tickets-filters';
-      div.id = 'tickets-advanced-filters';
-      div.innerHTML = `
-        <input class="filter-input" id="kf-q" placeholder="بحث باسم الأستاذ أو العنوان" oninput="updateTicketsAdvancedFilters()" />
-        <select class="filter-input" id="kf-year" onchange="updateTicketsAdvancedFilters()"><option value="all">كل المواسم</option>${optAcademicYears()}</select>
-        <select class="filter-input" id="kf-type" onchange="updateTicketsAdvancedFilters()">
-          <option value="all">كل الأنواع</option>
-          <option value="visit">زيارة صفية</option>
-          <option value="accomp">مرافقة تربوية</option>
-          <option value="admin">استفسار إداري</option>
-          <option value="complaint">تظلم / شكاية</option>
-        </select>`;
-      host.insertAdjacentElement('afterend', div);
-    }
-  }
-
-  // filters reports
-  if (!document.getElementById('reports-advanced-filters')) {
-    const host = document.querySelector('#tab-i-reports .page-header');
-    if (host && host.parentNode) {
-      const div = document.createElement('div');
-      div.className = 'advanced-filters reports-filters';
-      div.id = 'reports-advanced-filters';
-      div.innerHTML = `
-        <input class="filter-input" id="rf-q" placeholder="بحث بالأستاذ أو عنوان التقرير" oninput="updateReportsAdvancedFilters()" />
-        <select class="filter-input" id="rf-year" onchange="updateReportsAdvancedFilters()"><option value="all">كل المواسم</option>${optAcademicYears()}</select>
-        <select class="filter-input" id="rf-status" onchange="updateReportsAdvancedFilters()">
-          <option value="all">كل الحالات</option>
-          <option value="pending_review">للمراجعة</option>
-          <option value="approved">معتمد</option>
-          <option value="rejected">مرفوض</option>
-        </select>`;
-      host.insertAdjacentElement('afterend', div);
-    }
-  }
-
-  // academic year in forms
-  const ayOptions = `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears(currentAcademicYear())}`;
-  ensureSelectField('m-t-year', 'السنة الدراسية', `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears()}`, '#modal-add-teacher .modal-body .form-row-3', 'm-t-subject');
-  ensureSelectField('e-t-year', 'السنة الدراسية', `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears()}`, '#modal-edit-teacher .modal-body .form-row-3', 'e-t-subject');
-  ensureSelectField('sr-year', 'السنة الدراسية', `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears()}`, '#modal-self-register-teacher .modal-body .form-row-3', 'sr-subject');
-  ensureSelectField('cp-year', 'السنة الدراسية', `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears()}`, '#modal-complete-teacher-profile .modal-body .form-row-2:last-of-type', 'cp-code');
-  ensureSelectField('rpt-year', 'السنة الدراسية', `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears()}`, '#modal-upload-report .modal-body .form-row-3', 'rpt-subject');
-  ensureSelectField('req-year', 'السنة الدراسية', `<option value="${currentAcademicYear()}">${currentAcademicYear()}</option>${optAcademicYears()}`, '#tab-t-request .form-card .form-row-3', 'req-unit');
-
-  ensureNoticeText('#self-register-note', 'يمكنك التسجيل بدعوة مخصصة للأستاذ أو برمز المفتش العام. الدعوة المخصصة أكثر أماناً ودقة.');
-
-  // add invite hint in add teacher modal
-  const addModal = document.querySelector('#modal-add-teacher .modal-body');
-  if (addModal && !document.getElementById('add-teacher-invite-hint')) {
-    const hint = document.createElement('div');
-    hint.id = 'add-teacher-invite-hint';
-    hint.className = 'notice-box soft';
-    hint.innerHTML = 'يمكنك ترك كلمة المرور فارغة لإنشاء <strong>دعوة مخصصة</strong> فقط، أو إدخال كلمة مرور لإنشاء الحساب مباشرة.';
-    addModal.prepend(hint);
-  }
-
-  // dossier modal
-  if (!document.getElementById('modal-teacher-dossier')) {
-    const modal = document.createElement('div');
-    modal.id = 'modal-teacher-dossier';
-    modal.className = 'modal-overlay';
-    modal.setAttribute('onclick', "closeModal('modal-teacher-dossier')");
-    modal.innerHTML = `
-      <div class="modal-box modal-xl" onclick="event.stopPropagation()">
-        <div class="modal-hd">
-          <h3>ملف الأستاذ</h3>
-          <button class="modal-x" onclick="closeModal('modal-teacher-dossier')">✕</button>
-        </div>
-        <div class="modal-body" id="teacher-dossier-body"></div>
-        <div class="modal-ft"><button class="btn-ghost" onclick="closeModal('modal-teacher-dossier')">إغلاق</button></div>
-      </div>`;
-    document.body.appendChild(modal);
-  }
-}
-
-function updateTeachersAdvancedFilters() {
-  ADV.teachers.q = (document.querySelector('#tab-i-teachers .search-bar')?.value || '').trim().toLowerCase();
-  ADV.teachers.year = document.getElementById('tf-year')?.value || 'all';
-  ADV.teachers.status = document.getElementById('tf-status')?.value || 'all';
-  renderTeachers();
-}
-function updateTicketsAdvancedFilters() {
-  ADV.tickets.q = (document.getElementById('kf-q')?.value || '').trim().toLowerCase();
-  ADV.tickets.year = document.getElementById('kf-year')?.value || 'all';
-  ADV.tickets.type = document.getElementById('kf-type')?.value || 'all';
-  renderTickets();
-}
-function updateReportsAdvancedFilters() {
-  ADV.reports.q = (document.getElementById('rf-q')?.value || '').trim().toLowerCase();
-  ADV.reports.yearAcademic = document.getElementById('rf-year')?.value || 'all';
-  ADV.reports.status = document.getElementById('rf-status')?.value || 'all';
-  renderInspectorReports();
-}
-
-function refreshInviteSummary() {
-  const chip = document.getElementById('inspector-share-code-chip');
-  if (chip) chip.textContent = getInspectorInviteCode() || '—';
-  const grid = document.getElementById('invite-grid');
-  if (!grid) return;
-  const invited = APP.teachers.filter(t => (t.status || 'active') === 'invited');
-  if (!invited.length) {
-    grid.innerHTML = '<div class="invite-empty">لا توجد دعوات مخصصة حالياً.</div>';
-    return;
-  }
-  grid.innerHTML = invited.map(t => `
-    <div class="invite-card-row">
-      <div>
-        <div class="invite-row-title">${e(t.name)}</div>
-        <div class="invite-row-sub">${e(t.school)} — ${e(t.grade || '—')} — ${e(t.academicYear || currentAcademicYear())}</div>
-      </div>
-      <div class="invite-row-actions">
-        <span class="invite-code-mini">${e(t.inviteCode || '—')}</span>
-        <button class="btn-inline" onclick="copyTeacherInvite('${t.id}')">نسخ</button>
-      </div>
-    </div>`).join('');
-}
-
-function copyTeacherInvite(id) {
-  const t = APP.teachers.find(x => x.id === id);
-  if (!t) return;
-  const code = t.inviteCode || getInspectorInviteCode();
-  const text = `رابط المنظومة: ${location.href}\nرمز الدعوة: ${code}\nالاسم: ${t.name}`;
-  navigator.clipboard?.writeText(text).then(() => showToast(`✅ تم نسخ دعوة ${t.name}`)).catch(() => showToast(code));
-}
-
-function openTeacherDossier(id) {
-  const t = APP.teachers.find(x => x.id === id);
-  if (!t) return;
-  const tickets = APP.tickets.filter(x => x.teacherId === id).slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  const reports = APP.reports.filter(x => x.teacherId === id).slice().sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt));
-  const visits = APP.visits.filter(x => x.teacherId === id).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const timeline = [
-    ...tickets.slice(0,5).map(x => ({ type:'طلب', date:x.createdAt, text:`${x.title} — ${statusLabel(x.status)}` })),
-    ...reports.slice(0,5).map(x => ({ type:'تقرير', date:x.submittedAt, text:`${x.title} — ${statusLabel(x.status)}` })),
-    ...visits.slice(0,5).map(x => ({ type:'زيارة', date:x.date, text:`زيارة مبرمجة — ${statusLabel(x.status)}` })),
-  ].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
-  const body = document.getElementById('teacher-dossier-body');
-  if (!body) return;
-  body.innerHTML = `
-    <div class="dossier-head">
-      <div class="dossier-avatar" style="background:${e(t.color || COLORS[0])}">${initial(t.name)}</div>
-      <div>
-        <div class="dossier-name">${e(t.name)}</div>
-        <div class="dossier-sub">${e(t.school)} — ${e(t.grade || '—')} ${t.subject ? '— ' + e(t.subject) : ''}</div>
-        <div class="dossier-chips">
-          <span class="pill ${teacherStatusClass(t.status || 'active')}">${teacherStatusLabel(t.status || 'active')}</span>
-          <span class="pill">${e(t.academicYear || currentAcademicYear())}</span>
-          ${t.inviteCode ? `<span class="pill">دعوة: ${e(t.inviteCode)}</span>` : ''}
-        </div>
-      </div>
-    </div>
-    <div class="dossier-grid">
-      <div class="dossier-stat"><strong>${reports.length}</strong><span>تقارير</span></div>
-      <div class="dossier-stat"><strong>${tickets.length}</strong><span>طلبات</span></div>
-      <div class="dossier-stat"><strong>${visits.length}</strong><span>زيارات</span></div>
-      <div class="dossier-stat"><strong>${reports.filter(r=>r.status==='approved').length}</strong><span>تقارير معتمدة</span></div>
-    </div>
-    <div class="dossier-layout">
-      <div class="dossier-panel">
-        <h4>المعطيات الأساسية</h4>
-        <div class="tdg-row"><span class="tdg-key">البريد</span><span class="tdg-val">${e(t.email || '—')}</span></div>
-        <div class="tdg-row"><span class="tdg-key">المفتش</span><span class="tdg-val">${e(APP.inspector?.name || '—')}</span></div>
-        <div class="tdg-row"><span class="tdg-key">الدائرة</span><span class="tdg-val">${e(APP.inspector?.district || '—')}</span></div>
-        <div class="tdg-row"><span class="tdg-key">الحالة</span><span class="tdg-val">${teacherStatusLabel(t.status || 'active')}</span></div>
-      </div>
-      <div class="dossier-panel">
-        <h4>السجل الزمني</h4>
-        <div class="timeline-list">
-          ${timeline.length ? timeline.map(item => `<div class="timeline-item"><span class="timeline-type">${item.type}</span><div class="timeline-text">${e(item.text)}</div><div class="timeline-date">${formatDate(item.date)}</div></div>`).join('') : '<div class="feed-empty">لا توجد أنشطة بعد.</div>'}
-        </div>
-      </div>
-    </div>`;
-  openModal('modal-teacher-dossier');
-}
-
-// Override mapping so cloud data includes academic year / statuses / invite
-function mapTeacher(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    authUserId: row.auth_user_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-    ownerId: row.owner_id || row.inspector_id || null,
-    name: row.full_name || row.name || '',
-    email: row.email || '',
-    pass: '',
-    school: row.school || '',
-    grade: row.grade || '',
-    subject: row.subject || '',
-    color: row.color || COLORS[0],
-    academicYear: row.academic_year || row.academicYear || currentAcademicYear(),
-    status: row.status || 'active',
-    inviteCode: row.invite_code || row.inviteCode || '',
-    inviteStatus: row.invite_status || row.inviteStatus || (row.invite_code ? 'pending' : 'none'),
-    createdAt: row.created_at || '',
-  };
-}
-function mapTicket(row) {
-  return {
-    id: row.id,
-    teacherId: row.teacher_id,
-    teacherName: row.teacher_name || '',
-    school: row.school || '',
-    type: row.type || 'visit',
-    title: row.title || '',
-    desc: row.description || row.desc || '',
-    subject: row.subject || '',
-    unit: row.unit || '',
-    notes: row.notes || '',
-    preferredDate: row.preferred_date || row.preferredDate || '',
-    status: row.status || 'pending',
-    inspectorNote: row.inspector_note || row.inspectorNote || '',
-    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-    academicYear: row.academic_year || row.academicYear || currentAcademicYear(),
-    ownerId: row.owner_id || row.inspector_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-  };
-}
-function mapReport(row) {
-  return {
-    id: row.id,
-    teacherId: row.teacher_id,
-    teacherName: row.teacher_name || '',
-    school: row.school || '',
-    grade: row.grade || '',
-    title: row.title || '',
-    semester: row.semester || '',
-    subject: row.subject || '',
-    summary: row.summary || '',
-    fileName: row.file_name || row.fileName || '',
-    fileUrl: row.file_url || row.fileUrl || '',
-    fileSize: row.file_size || 0,
-    status: row.status || 'pending_review',
-    inspectorNote: row.inspector_note || '',
-    submittedAt: row.submitted_at || row.submittedAt || new Date().toISOString(),
-    academicYear: row.academic_year || row.academicYear || currentAcademicYear(),
-    ownerId: row.owner_id || row.inspector_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-  };
-}
-function mapVisit(row) {
-  return {
-    id: row.id,
-    ticketId: row.ticket_id,
-    teacherId: row.teacher_id,
-    date: row.visit_date || row.date || '',
-    status: row.status || 'scheduled',
-    createdAt: row.created_at || new Date().toISOString(),
-    academicYear: row.academic_year || row.academicYear || currentAcademicYear(),
-    ownerId: row.owner_id || row.inspector_id || null,
-    inspectorId: row.inspector_id || row.owner_id || null,
-  };
-}
-
-async function cloudInsertTeacherRow(teacher, inspectorId, authUserId = null) {
-  const row = {
-    id: teacher.id || undefined,
-    owner_id: inspectorId,
-    inspector_id: inspectorId,
-    auth_user_id: authUserId,
-    full_name: teacher.name,
-    email: normEmail(teacher.email),
-    school: teacher.school,
-    grade: teacher.grade,
-    subject: teacher.subject || '',
-    color: teacher.color || COLORS[0],
-    academic_year: teacher.academicYear || currentAcademicYear(),
-    status: teacher.status || (authUserId ? 'active' : 'invited'),
-    invite_code: teacher.inviteCode || null,
-    invite_status: teacher.inviteStatus || (authUserId ? 'accepted' : (teacher.inviteCode ? 'pending' : 'none')),
-  };
-  const { data, error } = await CLOUD.client.from('teachers').upsert(row).select().single();
-  if (error) throw error;
-  return mapTeacher(data);
-}
-async function cloudUpdateTeacherRow(teacher) {
-  const row = {
-    full_name: teacher.name,
-    email: normEmail(teacher.email),
-    school: teacher.school,
-    grade: teacher.grade,
-    subject: teacher.subject || '',
-    color: teacher.color || COLORS[0],
-    academic_year: teacher.academicYear || currentAcademicYear(),
-    status: teacher.status || 'active',
-    invite_code: teacher.inviteCode || null,
-    invite_status: teacher.inviteStatus || (teacher.inviteCode ? 'pending' : 'none'),
-  };
-  const { data, error } = await CLOUD.client.from('teachers').update(row).eq('id', teacher.id).select().single();
-  if (error) throw error;
-  return mapTeacher(data);
-}
-async function cloudInsertTicket(ticket) {
-  const row = {
-    id: ticket.id || undefined,
-    owner_id: ticket.inspectorId || ticket.ownerId,
-    inspector_id: ticket.inspectorId || ticket.ownerId,
-    teacher_id: ticket.teacherId,
-    teacher_name: ticket.teacherName,
-    school: ticket.school,
-    type: ticket.type,
-    title: ticket.title,
-    description: ticket.desc,
-    subject: ticket.subject || '',
-    unit: ticket.unit || '',
-    notes: ticket.notes || '',
-    preferred_date: ticket.preferredDate,
-    status: ticket.status,
-    inspector_note: ticket.inspectorNote || '',
-    created_at: ticket.createdAt || new Date().toISOString(),
-    academic_year: ticket.academicYear || currentAcademicYear(),
-  };
-  const { data, error } = await CLOUD.client.from('tickets').insert(row).select().single();
-  if (error) throw error;
-  return mapTicket(data);
-}
-async function cloudUpsertVisit(visit) {
-  const row = {
-    id: visit.id || undefined,
-    owner_id: visit.inspectorId || visit.ownerId,
-    inspector_id: visit.inspectorId || visit.ownerId,
-    teacher_id: visit.teacherId,
-    ticket_id: visit.ticketId || null,
-    visit_date: visit.date,
-    status: visit.status || 'scheduled',
-    academic_year: visit.academicYear || currentAcademicYear(),
-  };
-  const { data, error } = await CLOUD.client.from('visits').upsert(row).select().single();
-  if (error) throw error;
-  return mapVisit(data);
-}
-async function cloudInsertReport(report) {
-  const row = {
-    id: report.id || undefined,
-    owner_id: report.inspectorId || report.ownerId,
-    inspector_id: report.inspectorId || report.ownerId,
-    teacher_id: report.teacherId,
-    teacher_name: report.teacherName,
-    school: report.school,
-    grade: report.grade,
-    title: report.title,
-    semester: report.semester || '',
-    subject: report.subject || '',
-    summary: report.summary || '',
-    file_name: report.fileName || '',
-    file_url: report.fileUrl || '',
-    file_size: report.fileSize || 0,
-    status: report.status || 'pending_review',
-    inspector_note: report.inspectorNote || '',
-    submitted_at: report.submittedAt || new Date().toISOString(),
-    academic_year: report.academicYear || currentAcademicYear(),
-  };
-  const { data, error } = await CLOUD.client.from('reports').insert(row).select().single();
-  if (error) throw error;
-  return mapReport(data);
-}
-async function cloudFindTeacherInvite(code) {
-  const clean = String(code || '').trim();
-  if (!clean) return null;
-  const { data, error } = await CLOUD.client.rpc('find_teacher_invite', { p_code: clean });
-  if (error) throw error;
-  return Array.isArray(data) ? (data[0] || null) : data;
-}
-
-addTeacherFromModal = async function addTeacherFromModalAdvanced() {
-  const name = v('m-t-name');
-  const email = normEmail(v('m-t-email'));
-  const pass = v('m-t-pass');
-  const school = v('m-t-school');
-  const grade = v('m-t-grade');
-  const subject = v('m-t-subject');
-  const academicYear = v('m-t-year') || currentAcademicYear();
-
-  if (!name || !email || !school || !grade) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
-  }
-  if (APP.teachers.find(t => normEmail(t.email) === email) || (APP.inspector && normEmail(APP.inspector.email) === email)) {
-    showToast('⚠ هذا البريد الإلكتروني مسجل بالفعل');
-    return;
-  }
-  if (pass && pass.length < 6) {
-    showToast('⚠ كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-    return;
-  }
-
-  const inviteCode = ('T' + Math.random().toString(36).slice(2, 8)).toUpperCase();
-  const teacher = {
-    id: genId(), name, email, pass, school, grade, subject,
-    color: COLORS[APP.teachers.length % COLORS.length],
-    inspectorId: APP.inspector?.id || null,
-    ownerId: APP.inspector?.id || null,
-    academicYear,
-    status: pass ? 'active' : 'invited',
-    inviteCode: pass ? '' : inviteCode,
-    inviteStatus: pass ? 'accepted' : 'pending',
-  };
-
-  try {
-    if (cloudOn() && APP.currentUser?.role === 'inspector') {
-      if (pass) {
-        const tUser = await cloudCreateTeacherAuth(teacher, APP.inspector.id);
-        const inserted = await cloudInsertTeacherRow(teacher, APP.inspector.id, tUser?.id || null);
-        APP.teachers.push(inserted);
-      } else {
-        const inserted = await cloudInsertTeacherRow(teacher, APP.inspector.id, null);
-        APP.teachers.push(inserted);
-      }
-    } else {
-      APP.teachers.push(teacher);
-    }
-    syncCurrentUserCache();
-    closeModal('modal-add-teacher');
-    clearFields(['m-t-name','m-t-email','m-t-pass','m-t-school','m-t-grade','m-t-subject']);
-    const y = document.getElementById('m-t-year'); if (y) y.value = currentAcademicYear();
-    renderTeachers();
-    renderInspectorOverview();
-    refreshInviteSummary();
-    showToast(pass ? `✅ تمت إضافة الأستاذ(ة) ${name}` : `✅ تم إنشاء دعوة مخصصة للأستاذ ${name}`);
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر إضافة الأستاذ أو إنشاء الدعوة');
-  }
-};
-
-saveTeacherEdit = async function saveTeacherEditAdvanced() {
-  const idx = APP.teachers.findIndex(t => t.id === activeTeacherId);
-  if (idx === -1) return;
-  const email = normEmail(v('e-t-email'));
-  if (!v('e-t-name') || !email || !v('e-t-school') || !v('e-t-grade')) {
-    showToast('⚠ يُرجى ملء الحقول الإلزامية');
-    return;
-  }
-  if (APP.teachers.some((t, i) => i !== idx && normEmail(t.email) === email) || (APP.inspector && normEmail(APP.inspector.email) === email)) {
-    showToast('⚠ هذا البريد الإلكتروني مستعمل');
-    return;
-  }
-
-  const updatedTeacher = {
-    ...APP.teachers[idx],
-    name: v('e-t-name'),
-    email,
-    school: v('e-t-school'),
-    grade: v('e-t-grade'),
-    subject: v('e-t-subject'),
-    academicYear: v('e-t-year') || APP.teachers[idx].academicYear || currentAcademicYear(),
-  };
-
-  try {
-    APP.teachers[idx] = cloudOn() ? await cloudUpdateTeacherRow(updatedTeacher) : updatedTeacher;
-    APP.tickets.forEach(t => { if (t.teacherId === activeTeacherId) { t.teacherName = updatedTeacher.name; t.school = updatedTeacher.school; } });
-    APP.reports.forEach(r => { if (r.teacherId === activeTeacherId) { r.teacherName = updatedTeacher.name; r.school = updatedTeacher.school; r.grade = updatedTeacher.grade; } });
-    syncCurrentUserCache();
-    closeModal('modal-edit-teacher');
-    renderTeachers();
-    renderInspectorOverview();
-    refreshInviteSummary();
-    showToast(v('e-t-pass') ? '✅ تم حفظ التعديلات. تغيير كلمة مرور الأستاذ يحتاج إعادة تعيين عبر البريد أو خدمة إدارية.' : '✅ تم حفظ التعديلات');
-  } catch (err) {
-    console.error(err);
-    showToast('❌ تعذر حفظ التعديلات');
-  }
-};
-
-submitRequest = async function submitRequestAdvanced() {
-  const title = v('req-title');
-  const date = v('req-date');
-  const desc = v('req-desc');
-  if (!title || !date || !desc) { showToast('⚠ يُرجى ملء الحقول الإلزامية'); return; }
-  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id);
-  if (!teacher) return;
-  const ticket = {
-    id: genId(), teacherId: teacher.id, teacherName: teacher.name, school: teacher.school,
-    type: selectedRequestType, title, desc, subject: v('req-subject'), unit: v('req-unit'), notes: v('req-notes'),
-    preferredDate: date, status: 'pending', inspectorNote: '', createdAt: new Date().toISOString(),
-    ownerId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-    inspectorId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-    academicYear: v('req-year') || teacher.academicYear || currentAcademicYear(),
-  };
-  try {
-    const finalTicket = cloudOn() ? await cloudInsertTicket(ticket) : ticket;
-    APP.tickets.unshift(finalTicket);
-    syncCurrentUserCache();
-    clearRequestForm();
-    showToast('✅ تم إرسال طلبك بنجاح');
-    tTab('t-home', document.querySelector('[data-tab="t-home"]'));
-  } catch (err) {
-    console.error(err); showToast('❌ تعذر إرسال الطلب');
-  }
-};
-
-uploadReport = async function uploadReportAdvanced() {
+async function uploadReport() {
   const title = v('rpt-title');
   const semester = v('rpt-semester');
   const subject = v('rpt-subject');
   const summary = v('rpt-summary');
-  const academicYear = v('rpt-year') || currentAcademicYear();
-  const file = document.getElementById('rpt-file')?.files?.[0] || null;
   if (!title) { showToast('⚠ يُرجى إدخال عنوان التقرير'); return; }
-  if (file) {
-    const okExt = /\.(pdf|doc|docx)$/i.test(file.name || '');
-    if (!okExt) { showToast('⚠ الملف يجب أن يكون PDF أو Word'); return; }
-    if ((file.size || 0) > 10 * 1024 * 1024) { showToast('⚠ الحد الأقصى لحجم الملف هو 10MB'); return; }
-  }
-  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id);
+  const teacher = APP.teachers.find(t => t.id === APP.currentUser.id) || APP.teachers[0];
   if (!teacher) return;
   try {
-    const fileInfo = cloudOn() ? await cloudUploadReportFile(file, teacher.id) : { fileName: file?.name || '', fileUrl: '', fileSize: file?.size || 0 };
-    const report = {
-      id: genId(), teacherId: teacher.id, teacherName: teacher.name, school: teacher.school, grade: teacher.grade,
-      title, semester, subject, summary, academicYear,
-      fileName: fileInfo.fileName, fileUrl: fileInfo.fileUrl, fileSize: fileInfo.fileSize,
-      status: 'pending_review', inspectorNote: '', submittedAt: new Date().toISOString(),
-      ownerId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-      inspectorId: teacher.inspectorId || teacher.ownerId || APP.inspector?.id || null,
-    };
-    const finalReport = cloudOn() ? await cloudInsertReport(report) : report;
-    APP.reports.unshift(finalReport);
-    syncCurrentUserCache();
-    closeModal('modal-upload-report');
-    clearFields(['rpt-title','rpt-subject','rpt-summary']);
-    const fi = document.getElementById('rpt-file'); if (fi) fi.value = '';
-    reportAttachment = null; setText('rpt-file-name', 'لم يتم اختيار ملف');
-    renderTeacherReports(teacher); renderTeacherHome(teacher); renderInspectorReports();
-    showToast(finalReport.fileUrl ? '✅ تم رفع التقرير والملف بنجاح' : '✅ تم رفع التقرير');
-  } catch (err) {
-    console.error(err); showToast('❌ تعذر رفع التقرير');
-  }
-};
+    let filePath = '', fileName = reportAttachment?.name || '', fileSize = reportAttachment?.size || 0;
+    const fileInput = document.getElementById('rpt-file');
+    const file = fileInput?.files?.[0] || null;
+    if (SB.ready && file) {
+      const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      filePath = `${teacher.inspectorUserId || APP.inspector.id}/${teacher.id}/${safeName}`;
+      const { error: uploadError } = await SB.client.storage.from('reports').upload(filePath, file, { upsert:false });
+      if (uploadError) throw uploadError;
+    }
+    if (SB.ready) {
+      const payload = {
+        inspector_user_id: teacher.inspectorUserId || APP.inspector.id,
+        teacher_row_id: teacher.id,
+        teacher_user_id: APP.currentUser.id,
+        teacher_name: teacher.name,
+        school: teacher.school,
+        grade: teacher.grade,
+        title, semester, subject, summary,
+        file_name:fileName, file_size:fileSize, file_path:filePath,
+        status:'pending_review'
+      };
+      const { data, error } = await SB.client.from('reports').insert(payload).select().single();
+      if (error) throw error;
+      APP.reports.push(mapReportRow(data));
+    } else {
+      APP.reports.push({ id:genId(), teacherId:teacher.id, teacherName:teacher.name, school:teacher.school, grade:teacher.grade, title, semester, subject, summary, fileName, fileSize, status:'pending_review', inspectorNote:'', submittedAt:new Date().toISOString() });
+      saveAll();
+    }
+    closeModal('modal-upload-report'); clearFields(['rpt-title','rpt-subject','rpt-summary']); if (fileInput) fileInput.value=''; reportAttachment=null; setText('rpt-file-name','لم يتم اختيار ملف'); renderTeacherReports(teacher); renderTeacherHome(teacher); showToast('✅ تم رفع التقرير بنجاح');
+  } catch(err) { console.error(err); showToast('❌ ' + (err.message || 'تعذر رفع التقرير')); }
+}
 
-selfRegisterTeacher = async function selfRegisterTeacherAdvanced() {
-  const name = v('sr-name');
-  const email = normEmail(v('sr-email'));
-  const pass = v('sr-pass');
-  const school = v('sr-school');
-  const grade = v('sr-grade');
-  const subject = v('sr-subject');
-  const shareCode = String(v('sr-code') || '').trim().toUpperCase();
-  const academicYear = v('sr-year') || currentAcademicYear();
-  if (!name || !email || !pass || !school || !grade || !shareCode) { showToast('⚠ يُرجى ملء الحقول الإلزامية'); return; }
-  if (pass.length < 6) { showToast('⚠ كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
-  if (!cloudOn()) { showToast('⚠ التسجيل الذاتي يحتاج تفعيل Supabase'); return; }
+async function openReportFile(path) {
+  if (!SB.ready || !path) return;
   try {
-    let teacherInvite = null;
-    try { teacherInvite = await cloudFindTeacherInvite(shareCode); } catch {}
-    let inspector = null;
-    if (teacherInvite?.inspector_id) {
-      inspector = { id: teacherInvite.inspector_id };
-    } else {
-      inspector = await cloudFindInspectorByShareCode(shareCode);
-    }
-    if (!inspector?.id) throw new Error('invalid_invite_code');
-    const signed = await CLOUD.client.auth.signUp({
-      email, password: pass,
-      options: { data: { role: 'teacher', full_name: name, inspector_id: inspector.id, share_code: shareCode } }
-    });
-    if (signed.error) throw signed.error;
-    let authUser = signed.data?.user || null;
-    if (!signed.data?.session) {
-      const signedIn = await CLOUD.client.auth.signInWithPassword({ email, password: pass });
-      if (!signedIn.error) authUser = signedIn.data?.user || authUser;
-    }
-    if (!authUser?.id) {
-      closeModal('modal-self-register-teacher');
-      clearFields(['sr-name','sr-email','sr-pass','sr-school','sr-grade','sr-subject','sr-code']);
-      showToast('✅ تم إنشاء الحساب. أكّد بريدك ثم سجّل الدخول لإكمال الربط.');
-      return;
-    }
-    let teacher;
-    if (teacherInvite?.teacher_id) {
-      teacher = await cloudUpdateTeacherRow({
-        id: teacherInvite.teacher_id, authUserId: authUser.id, inspectorId: inspector.id, ownerId: inspector.id,
-        name, email, school, grade, subject,
-        color: teacherInvite.color || COLORS[Math.floor(Math.random() * COLORS.length)],
-        academicYear, status: 'active', inviteCode: teacherInvite.invite_code || shareCode, inviteStatus: 'accepted',
-      });
-      await CLOUD.client.from('teachers').update({ auth_user_id: authUser.id, status: 'active', invite_status: 'accepted', email }).eq('id', teacherInvite.teacher_id);
-      teacher = mapTeacher({ ...teacher, auth_user_id: authUser.id });
-    } else {
-      teacher = await cloudInsertTeacherRow({
-        id: genId(), name, email, school, grade, subject,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)], academicYear,
-        status: 'active', inviteCode: '', inviteStatus: 'accepted'
-      }, inspector.id, authUser.id);
-    }
-    APP.currentUser = { role: 'teacher', id: teacher.id };
-    save(KEYS.CURRENT_USER, APP.currentUser);
-    await cloudHydrate({ role: 'teacher', appId: teacher.id, teacher });
-    closeModal('modal-self-register-teacher');
-    clearFields(['sr-name','sr-email','sr-pass','sr-school','sr-grade','sr-subject','sr-code']);
-    showToast('🎉 تم التسجيل والدخول بنجاح');
-    enterTeacher(teacher.id);
-  } catch (err) {
-    console.error(err);
-    const msg = String(err?.message || '');
-    if (msg.includes('User already registered')) showToast('⚠ هذا البريد مسجل من قبل. سجّل الدخول مباشرة أو أكمل ملفك.');
-    else if (msg.includes('invalid_invite_code')) showToast('❌ رمز الدعوة غير صحيح');
-    else showToast('❌ تعذر إتمام التسجيل');
-  }
-};
+    const { data, error } = await SB.client.storage.from('reports').createSignedUrl(path, 60);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch(err) { console.error(err); showToast('❌ تعذر فتح الملف'); }
+}
 
-completeTeacherProfile = async function completeTeacherProfileAdvanced() {
-  const payload = pendingTeacherProfile || {};
-  const name = v('cp-name') || payload.name;
-  const email = normEmail(v('cp-email') || payload.email);
-  const school = v('cp-school');
-  const grade = v('cp-grade');
-  const subject = v('cp-subject');
-  const shareCode = String(v('cp-code') || payload.shareCode || '').trim().toUpperCase();
-  const academicYear = v('cp-year') || currentAcademicYear();
-  if (!name || !email || !school || !grade || !shareCode) { showToast('⚠ يُرجى ملء الحقول الإلزامية'); return; }
-  try {
-    let teacherInvite = null;
-    try { teacherInvite = await cloudFindTeacherInvite(shareCode); } catch {}
-    const inspector = payload.inspectorId ? { id: payload.inspectorId } : (teacherInvite?.inspector_id ? { id: teacherInvite.inspector_id } : await cloudFindInspectorByShareCode(shareCode));
-    if (!inspector?.id) throw new Error('invalid_invite_code');
-    const authUser = await cloudGetAuthUser();
-    if (!authUser?.id) throw new Error('no_auth_user');
-    let existing = await cloudFetchTeacherByAuthUserId(authUser.id);
-    if (!existing && teacherInvite?.teacher_id) existing = { id: teacherInvite.teacher_id };
-    if (!existing) existing = await cloudFetchTeacherByEmail(email);
-    let teacher;
-    if (existing?.id) {
-      await CLOUD.client.from('teachers').update({ auth_user_id: authUser.id, status: 'active', invite_status: 'accepted' }).eq('id', existing.id);
-      teacher = await cloudUpdateTeacherRow({ ...existing, id: existing.id, name, email, school, grade, subject, academicYear, status: 'active', inviteStatus: 'accepted' });
-    } else {
-      teacher = await cloudInsertTeacherRow({ id: genId(), name, email, school, grade, subject, color: COLORS[Math.floor(Math.random() * COLORS.length)], academicYear, status: 'active', inviteStatus: 'accepted' }, inspector.id, authUser.id);
-    }
-    pendingTeacherProfile = null;
-    APP.currentUser = { role: 'teacher', id: teacher.id };
-    save(KEYS.CURRENT_USER, APP.currentUser);
-    await cloudHydrate({ role: 'teacher', appId: teacher.id, teacher });
-    closeModal('modal-complete-teacher-profile');
-    showToast('✅ تم إكمال ملف الأستاذ');
-    enterTeacher(teacher.id);
-  } catch (err) {
-    console.error(err); showToast('❌ تعذر إكمال الملف');
-  }
-};
-
-renderTeachers = function renderTeachersAdvanced(filter = '') {
-  const grid = document.getElementById('teachers-grid');
-  const emptyEl = document.getElementById('teachers-empty');
-  if (!grid) return;
-  if (typeof filter === 'string' && filter) ADV.teachers.q = filter.trim().toLowerCase();
-  const q = ADV.teachers.q || '';
-  let list = APP.teachers.filter(t => {
-    const blob = [t.name, t.school, t.grade || '', t.subject || '', t.email || '', t.academicYear || ''].join(' ').toLowerCase();
-    if (q && !blob.includes(q)) return false;
-    if (ADV.teachers.year !== 'all' && (t.academicYear || currentAcademicYear()) !== ADV.teachers.year) return false;
-    if (ADV.teachers.status !== 'all' && (t.status || 'active') !== ADV.teachers.status) return false;
-    return true;
-  });
-  setText('teachers-count-label', `${list.length} / ${APP.teachers.length} أستاذ/ة`);
-  if (!list.length) { emptyEl && (emptyEl.style.display='flex'); grid.innerHTML=''; return; }
-  emptyEl && (emptyEl.style.display='none');
-  grid.innerHTML = list.map(t => {
-    const myReports = APP.reports.filter(r => r.teacherId === t.id);
-    const approved = myReports.filter(r => r.status === 'approved').length;
-    const pending = APP.tickets.filter(tk => tk.teacherId === t.id && tk.status === 'pending').length;
-    const scheduled = APP.visits.filter(v => v.teacherId === t.id && v.status === 'scheduled').length;
-    return `<div class="teacher-card">
-      <div class="tc-top">
-        <div class="tc-av" style="background:${e(t.color)}">${initial(t.name)}</div>
-        <div>
-          <div class="tc-name">${e(t.name)}</div>
-          <div class="tc-school">${e(t.school)}</div>
-        </div>
-      </div>
-      <div class="tc-grade">${e(t.grade)}${t.subject ? ' — ' + e(t.subject) : ''}</div>
-      <div class="teacher-meta-line">
-        <span class="pill ${teacherStatusClass(t.status || 'active')}">${teacherStatusLabel(t.status || 'active')}</span>
-        <span class="pill">${e(t.academicYear || currentAcademicYear())}</span>
-      </div>
-      <div class="mini-stats"><span>تقارير: ${approved}</span><span>طلبات: ${pending}</span><span>زيارات: ${scheduled}</span></div>
-      <div class="tc-footer tc-footer-wrap">
-        <span>${e(t.email)}</span>
-        <div class="inline-actions">
-          ${(t.status || 'active') === 'invited' ? `<button class="btn-inline" onclick="copyTeacherInvite('${t.id}')">دعوة</button>` : ''}
-          <button class="btn-inline" onclick="openTeacherDossier('${t.id}')">ملف</button>
-          <button class="btn-inline" onclick="openEditTeacherModal('${t.id}')">تعديل</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  refreshInviteSummary();
-};
-
-renderTickets = function renderTicketsAdvanced(filter) {
-  if (filter) currentTicketFilter = filter;
-  const tbody = document.getElementById('tickets-tbody');
-  const emptyEl = document.getElementById('tickets-empty');
-  const tableEl = document.getElementById('tickets-table-wrap');
-  if (!tbody) return;
-  let list = APP.tickets.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  if (currentTicketFilter !== 'all') list = list.filter(t => t.status === currentTicketFilter);
-  list = list.filter(t => {
-    const q = ADV.tickets.q || '';
-    const blob = [t.teacherName, t.title, t.school, t.subject || '', t.academicYear || ''].join(' ').toLowerCase();
-    if (q && !blob.includes(q)) return false;
-    if (ADV.tickets.type !== 'all' && t.type !== ADV.tickets.type) return false;
-    if (ADV.tickets.year !== 'all' && (t.academicYear || currentAcademicYear()) !== ADV.tickets.year) return false;
-    return true;
-  });
-  if (!list.length) { emptyEl && (emptyEl.style.display='flex'); tableEl && (tableEl.style.display='none'); return; }
-  emptyEl && (emptyEl.style.display='none'); tableEl && (tableEl.style.display='block');
-  tbody.innerHTML = list.map(t => `
-    <tr>
-      <td><div class="td-user"><div class="td-av" style="background:${teacherColor(t.teacherId)}">${initial(t.teacherName)}</div><span>${e(t.teacherName)}</span></div></td>
-      <td><span class="badge ${typeBadgeClass(t.type)}">${typeLabel(t.type)}</span></td>
-      <td>${e(t.school)}</td>
-      <td><div>${formatDate(t.createdAt)}</div><div class="table-sub">${e(t.academicYear || currentAcademicYear())}</div></td>
-      <td><span class="status ${statusClass(t.status)}">${statusLabel(t.status)}</span></td>
-      <td><button class="btn-act ${t.status==='pending'?'btn-act-primary':'btn-act-ghost'}" onclick="openTicketModal('${t.id}')">${t.status === 'pending' ? 'معالجة' : 'عرض'}</button></td>
-    </tr>`).join('');
-};
-
-renderInspectorReports = function renderInspectorReportsAdvanced() {
-  const listEl = document.getElementById('reports-list');
-  const emptyEl = document.getElementById('reports-empty');
-  const chipsEl = document.getElementById('report-chips');
+function renderInspectorReports() {
+  const listEl   = document.getElementById('reports-list');
+  const emptyEl  = document.getElementById('reports-empty');
+  const chipsEl  = document.getElementById('report-chips');
   if (!listEl) return;
-  let reports = APP.reports.slice().sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt));
-  reports = reports.filter(r => {
-    const q = ADV.reports.q || '';
-    const blob = [r.teacherName, r.title, r.school, r.grade || '', r.subject || '', r.academicYear || ''].join(' ').toLowerCase();
-    if (q && !blob.includes(q)) return false;
-    if (ADV.reports.status !== 'all' && r.status !== ADV.reports.status) return false;
-    if (ADV.reports.yearAcademic !== 'all' && (r.academicYear || currentAcademicYear()) !== ADV.reports.yearAcademic) return false;
-    return true;
-  });
-  const approved = reports.filter(r => r.status === 'approved').length;
-  const review = reports.filter(r => r.status === 'pending_review').length;
-  const rejected = reports.filter(r => r.status === 'rejected').length;
+  const reports = APP.reports.slice().reverse();
+  const approved  = reports.filter(r => r.status === 'approved').length;
+  const review    = reports.filter(r => r.status === 'pending_review').length;
+  const rejected  = reports.filter(r => r.status === 'rejected').length;
   if (chipsEl) chipsEl.innerHTML = `<span class="rsc rsc-green">✓ معتمد: ${approved}</span><span class="rsc rsc-blue">⏳ للمراجعة: ${review}</span><span class="rsc rsc-red">✗ مرفوض: ${rejected}</span>`;
   if (!reports.length) { emptyEl && (emptyEl.style.display='flex'); listEl.style.display='none'; return; }
   emptyEl && (emptyEl.style.display='none'); listEl.style.display='flex';
   listEl.innerHTML = reports.map(r => {
-    const cls = r.status === 'approved' ? 'rc-approved' : r.status === 'pending_review' ? 'rc-review' : r.status === 'rejected' ? 'rc-rejected' : 'rc-not_submitted';
-    const actionBtn = r.status === 'pending_review' ? `<button class="btn-act btn-act-primary" onclick="openReportModal('${r.id}')">مراجعة</button>` : `<button class="btn-act btn-act-ghost" onclick="openReportModal('${r.id}')">عرض</button>`;
+    const cls = r.status === 'approved' ? 'rc-approved' : r.status === 'pending_review' ? 'rc-review' : 'rc-rejected';
     return `<div class="report-card ${cls}">
       <div class="rc-icon">📄</div>
       <div class="rc-body">
         <div class="rc-title">${e(r.title)}</div>
-        <div class="rc-sub">${e(r.teacherName)} — ${e(r.school)} — ${e(r.grade)}</div>
-        <div class="rc-sub rc-sub-light">${e(r.academicYear || currentAcademicYear())}${r.fileUrl ? ' — ملف مرفوع' : ''}</div>
+        <div class="rc-sub">${e(r.teacherName)} — ${e(r.school)}</div>
+        <div class="rc-sub">${e(r.grade || '')}${r.subject ? ' — ' + e(r.subject) : ''}${r.semester ? ' — ' + e(r.semester) : ''}</div>
+        ${r.summary ? `<div class="rc-sub" style="margin-top:4px">${e(r.summary)}</div>` : ''}
+        ${r.inspectorNote ? `<div class="rc-sub" style="margin-top:4px;color:var(--gray-500)">ملاحظة: ${e(r.inspectorNote)}</div>` : ''}
       </div>
-      <div class="rc-meta"><span class="rc-date">رُفع: ${formatDate(r.submittedAt)}</span><span class="status ${statusClass(r.status)}">${statusLabel(r.status)}</span></div>
-      <div class="rc-actions">${actionBtn}</div>
+      <div class="rc-meta">
+        <span class="rc-date">${formatDate(r.submittedAt)}</span>
+        <span class="status ${statusClass(r.status)}">${statusLabel(r.status)}</span>
+        ${r.filePath ? `<button class="btn-inline-download" onclick="openReportFile('${e(r.filePath)}')">فتح الملف</button>` : ''}
+        ${r.status === 'pending_review' ? `<button class="btn-success" onclick="openReportModal('${r.id}')">مراجعة</button>` : ''}
+      </div>
     </div>`;
   }).join('');
-};
+}
 
-renderTeacherProfile = function renderTeacherProfileAdvanced(teacher) {
-  setText('pc-avatar', initial(teacher.name));
-  setText('pc-name', teacher.name);
-  const grid = document.getElementById('pc-grid');
-  if (!grid) return;
-  const insp = APP.inspector;
-  const reports = APP.reports.filter(r => r.teacherId === teacher.id);
-  const tickets = APP.tickets.filter(t => t.teacherId === teacher.id);
-  const visits = APP.visits.filter(v => v.teacherId === teacher.id);
-  const latest = [
-    ...reports.map(r => ({ kind:'تقرير', title:r.title, date:r.submittedAt })),
-    ...tickets.map(t => ({ kind:'طلب', title:t.title, date:t.createdAt })),
-    ...visits.map(v => ({ kind:'زيارة', title:'زيارة مبرمجة', date:v.date })),
-  ].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6);
-  grid.innerHTML = `
-    <div class="pc-item"><label>المؤسسة التعليمية</label><span>${e(teacher.school)}</span></div>
-    <div class="pc-item"><label>المستوى الدراسي</label><span>${e(teacher.grade)}</span></div>
-    <div class="pc-item"><label>المادة الدراسية</label><span>${e(teacher.subject || '—')}</span></div>
-    <div class="pc-item"><label>البريد الإلكتروني</label><span>${e(teacher.email)}</span></div>
-    <div class="pc-item"><label>السنة الدراسية</label><span>${e(teacher.academicYear || currentAcademicYear())}</span></div>
-    <div class="pc-item"><label>الحالة</label><span>${teacherStatusLabel(teacher.status || 'active')}</span></div>
-    <div class="pc-item"><label>النيابة الإقليمية</label><span>${e(insp?.province || '—')}</span></div>
-    <div class="pc-item"><label>الدائرة التعليمية</label><span>${e(insp?.district || '—')}</span></div>
-    <div class="pc-item"><label>المفتش المختص</label><span>${e(insp?.name || '—')}</span></div>
-    <div class="pc-item"><label>رمز الربط</label><span>${e(getInspectorInviteCode() || teacher.inviteCode || '—')}</span></div>
-    <div class="pc-item pc-item-wide"><label>مؤشرات الملف</label><span>تقارير: ${reports.length} — طلبات: ${tickets.length} — زيارات: ${visits.length}</span></div>
-    <div class="pc-item pc-item-wide"><label>آخر الأنشطة</label><span>${latest.length ? latest.map(x=>`${x.kind}: ${x.title} (${formatDate(x.date)})`).join(' • ') : 'لا توجد أنشطة بعد.'}</span></div>`;
-};
+function renderTeacherReports(teacher) {
+  const listEl  = document.getElementById('my-reports-list');
+  const emptyEl = document.getElementById('my-reports-empty');
+  const reports = APP.reports.filter(r => r.teacherId === teacher.id).slice().reverse();
+  if (!reports.length) { emptyEl && (emptyEl.style.display='flex'); listEl.style.display='none'; return; }
+  emptyEl && (emptyEl.style.display='none'); listEl.style.display='flex';
+  listEl.innerHTML = reports.map(r => {
+    const cls = r.status === 'approved' ? 'rc-approved' : r.status === 'pending_review' ? 'rc-review' : 'rc-rejected';
+    return `<div class="report-card ${cls}">
+      <div class="rc-icon">📄</div>
+      <div class="rc-body">
+        <div class="rc-title">${e(r.title)}</div>
+        <div class="rc-sub">${e(r.semester || '')}${r.subject ? ' — ' + e(r.subject) : ''}</div>
+        ${r.summary ? `<div class="rc-sub" style="margin-top:4px">${e(r.summary)}</div>` : ''}
+        ${r.inspectorNote ? `<div class="rc-sub" style="margin-top:4px;color:var(--gray-500)">ملاحظة المفتش: ${e(r.inspectorNote)}</div>` : ''}
+      </div>
+      <div class="rc-meta">
+        <span class="rc-date">رُفع: ${formatDate(r.submittedAt)}</span>
+        <span class="status ${statusClass(r.status)}">${statusLabel(r.status)}</span>
+        ${r.filePath ? `<button class="btn-inline-download" onclick="openReportFile('${e(r.filePath)}')">فتح الملف</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
 
-renderInspectorOverview = ((orig) => function() {
-  const res = orig.apply(this, arguments);
-  ensureDashboardEnhancements();
-  const invited = APP.teachers.filter(t => (t.status || 'active') === 'invited').length;
-  const suspended = APP.teachers.filter(t => (t.status || 'active') === 'suspended').length;
-  const pendingReports = APP.reports.filter(r => r.status === 'pending_review').length;
-  const overdueText = `دعوات معلقة: ${invited} — مراجعات تقارير: ${pendingReports} — معلّقون: ${suspended}`;
-  const visitsSummary = document.getElementById('visits-summary');
-  if (visitsSummary && !APP.visits.length) visitsSummary.textContent = overdueText;
-  refreshInviteSummary();
-  return res;
-})(renderInspectorOverview);
-
-const _openEditTeacherModalAdvanced = openEditTeacherModal;
-openEditTeacherModal = function(id) {
-  _openEditTeacherModalAdvanced(id);
-  const t = APP.teachers.find(x => x.id === id);
-  const year = document.getElementById('e-t-year'); if (year) year.value = t?.academicYear || currentAcademicYear();
-};
-
-const _openReportModalAdvanced = openReportModal;
-openReportModal = function(id) {
-  _openReportModalAdvanced(id);
-  const r = APP.reports.find(x => x.id === id);
-  const body = document.getElementById('report-modal-body');
-  if (body && r?.fileUrl && !body.innerHTML.includes('رابط الملف')) {
-    body.insertAdjacentHTML('beforeend', `<div class="tdg-row"><span class="tdg-key">رابط الملف:</span><span class="tdg-val"><a href="${e(r.fileUrl)}" target="_blank" rel="noopener">فتح المرفق</a></span></div>`);
-  }
-  if (body && r?.academicYear && !body.innerHTML.includes('السنة الدراسية')) {
-    body.insertAdjacentHTML('afterbegin', `<div class="tdg-row"><span class="tdg-key">السنة الدراسية:</span><span class="tdg-val">${e(r.academicYear)}</span></div>`);
-  }
-};
-
-const _openTicketModalAdvanced = openTicketModal;
-openTicketModal = function(id) {
-  _openTicketModalAdvanced(id);
-  const t = APP.tickets.find(x => x.id === id);
-  const body = document.getElementById('ticket-modal-body');
-  if (body && t?.academicYear && !body.innerHTML.includes('السنة الدراسية')) {
-    body.insertAdjacentHTML('afterbegin', `<div class="tdg-row"><span class="tdg-key">السنة الدراسية:</span><span class="tdg-val">${e(t.academicYear)}</span></div>`);
-  }
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    ensureDashboardEnhancements();
-    refreshInviteSummary();
-  }, 30);
-});
-
-
-// harden teacher login / role restore with status checks
-handleLogin = ((orig) => async function(e) {
-  await orig.call(this, e);
-  if (APP.currentUser?.role === 'teacher') {
-    const t = APP.teachers.find(x => x.id === APP.currentUser.id);
-    if (t && (t.status === 'suspended' || t.status === 'archived')) {
-      showToast('⚠ هذا الحساب غير مفعل حالياً');
-      await logout();
-    }
-  }
-})(handleLogin);
-
-cloudRestoreRoute = ((orig) => async function() {
-  const ok = await orig.call(this);
-  if (ok && APP.currentUser?.role === 'teacher') {
-    const t = APP.teachers.find(x => x.id === APP.currentUser.id);
-    if (t && (t.status === 'suspended' || t.status === 'archived')) {
-      showToast('⚠ هذا الحساب غير مفعل حالياً');
-      await logout();
-      return false;
-    }
-  }
-  return ok;
-})(cloudRestoreRoute);
+async function logout() {
+  APP.currentUser = null;
+  save(KEYS.CURRENT_USER, null);
+  if (SB.ready) { try { await SB.client.auth.signOut(); } catch {} }
+  showScreen('login');
+  const em = document.getElementById('login-email'); const ps = document.getElementById('login-pass'); if (em) em.value=''; if (ps) ps.value='';
+}
